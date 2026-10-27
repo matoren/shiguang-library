@@ -1,0 +1,20 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {CATEGORIES,WEIGHTS,MOVIE_WEIGHTS,calculate,scoreText,grade,finalScore,defaults,ranked,stats,backup,validateBackup,mergeRecords} from '../core.js';
+const record=(extra={})=>({id:'test-1',type:'book',title:'测试书',creator:'作者',country:'中国',year:'2026',category:CATEGORIES[0],tags:['测试'],status:'已读',date:'2026-10-27',comment:'完整恢复评论\n第二行',scores:[9,8,8,7,8,9],weights:WEIGHTS[0],ruleVersion:1,mode:'standard',quick:null,manual:null,adjusted:false,computed:8.25,final:8.25,cover:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',thumb:null,created:'2026-10-27T10:00:00.000Z',updated:'2026-10-27T10:00:00.000Z',...extra});
+function valid(extra={}){const r=record(extra);r.computed=calculate(r.scores,r.weights);r.final=finalScore(r);return r;}
+for(let i=0;i<5;i++)test(`分类 ${CATEGORIES[i]} 默认权重与六维计算`,()=>{assert.equal(WEIGHTS[i].reduce((a,b)=>a+b),100);const s=[9,8,7,6,5,4];const numerator=s.reduce((n,v,j)=>n+v*10*WEIGHTS[i][j],0);assert.equal(calculate(s,WEIGHTS[i]),Math.floor((numerator+50)/100)/10);});
+test('所有维度暂不评价不生成评分',()=>assert.equal(calculate(Array(6).fill(null),WEIGHTS[0]),null));
+test('零分严格区别于未评分',()=>{assert.equal(calculate([0,null,null,null,null,null],WEIGHTS[0]),0);assert.equal(scoreText(null),'未评分');assert.equal(scoreText(0),'✳ 0.0');});
+test('部分评分按有效权重归一化',()=>assert.equal(calculate([10,0,null,null,null,null],WEIGHTS[0]),5.6));
+test('四舍五入 8.25 为 8.3',()=>assert.equal(calculate([8,8.5],[50,50]),8.3));
+test('电影四维权重',()=>assert.equal(calculate([8,9,7,8],MOVIE_WEIGHTS),8.1));
+test('等级和低分边界',()=>{assert.equal(scoreText(6.9),'✳ 6.9');assert.equal(scoreText(7),'7.0');assert.equal(grade(9.5),'杰作');assert.equal(grade(0),'较差');});
+test('手动评分保留原始计算结果',()=>{const r=valid({adjusted:true,manual:9.2});assert.equal(r.computed,8.3);assert.equal(r.final,9.2);});
+test('电影快速模式保留维度数据',()=>{const r=valid({type:'movie',category:'剧情',status:'已看',scores:[8,9,7,8],weights:MOVIE_WEIGHTS,mode:'quick',quick:6.9});assert.equal(r.final,6.9);assert.equal(r.computed,8.1);validateBackup(backup([r],defaults()));});
+test('完整 JSON 备份恢复数量、评分、评论、权重、封面',()=>{const original=backup([valid()],defaults());const restored=validateBackup(JSON.parse(JSON.stringify(original)));assert.deepEqual(restored,original);});
+test('合并识别 ID 和同名作者年份，保留现有数据',()=>{const r=valid();const result=mergeRecords([r],[{...r,comment:'不同评论'},{...r,id:'other'},{...r,id:'new',title:'另一本'}]);assert.equal(result.records.length,2);assert.equal(result.conflicts.length,2);assert.equal(result.records[0].comment,r.comment);});
+test('非法格式、未来版本、坏图、错误评分均拒绝且输入不变',()=>{for(const modify of [d=>d.schemaVersion=2,d=>d.records[0].cover='https://temporary',d=>d.records[0].scores[0]=10.5,d=>d.records[0].final=2,d=>d.settings.weights[0][0]=90,d=>d.records.push(d.records[0])]){const d=backup([valid()],defaults()),before=JSON.stringify(d);modify(d);assert.throws(()=>validateBackup(d));assert.notEqual(JSON.stringify(d),before);}});
+test('排行榜只统计完成且有评分的作品，0分可入榜，同分稳定',()=>{const rs=[valid({id:'b'}),valid({id:'a'}),valid({id:'c',status:'想读'}),valid({id:'d',scores:Array(6).fill(null)}),valid({id:'e',scores:Array(6).fill(0)})];assert.deepEqual(ranked(rs,'book').map(r=>r.id),['a','b','e']);assert.equal(ranked(rs,'book','','2025').length,0);});
+test('数量包含未评分完成作品，平均分只取有效分，年度按完成日期',()=>{const rs=[valid(),valid({id:'u',scores:Array(6).fill(null)}),valid({id:'w',status:'想读'})];const s=stats(rs,'book',2026);assert.equal(s.count,2);assert.equal(s.average,'8.3');assert.equal(s.year,2);});
+test('重算不覆盖手动最终分',()=>{const r=valid({manual:7.4,adjusted:true});r.weights=WEIGHTS[4];r.computed=calculate(r.scores,r.weights);assert.equal(finalScore(r),7.4);});
+test('自定义规则有效权重为零时保留历史手动分且可备份',()=>{const r=valid({scores:[8,null,null,null,null,null],manual:7.4,adjusted:true});r.weights=[0,100,0,0,0,0];r.computed=calculate(r.scores,r.weights);r.final=finalScore(r);assert.equal(r.computed,null);assert.equal(r.final,7.4);validateBackup(backup([r],defaults()));});
