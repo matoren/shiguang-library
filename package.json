@@ -1,1 +1,1 @@
-{"name":"private-media-library","version":"2.1.0","type":"module","scripts":{"start":"node server.mjs","test":"node --test tests/*.test.mjs"}}
+{"name":"private-media-library","version":"2.2.0","type":"module","scripts":{"start":"node server.mjs","test":"node --test tests/*.test.mjs"}}

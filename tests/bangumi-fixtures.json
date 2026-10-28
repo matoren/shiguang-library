@@ -1,0 +1,100 @@
+{
+  "source": "https://api.bgm.tv/v0/search/subjects",
+  "license": "CC BY-SA; https://bgm.tv/about/copyright; only basic metadata retained",
+  "cases": [
+    {
+      "query": "原神",
+      "subjects": [
+        {
+          "id": 284157,
+          "type": 4,
+          "name": "原神",
+          "name_cn": "原神",
+          "date": "2020-09-28",
+          "platform": "游戏",
+          "images": {
+            "small": "https://lain.bgm.tv/r/200/pic/cover/l/1a/22/284157_zgv97.jpg",
+            "grid": "https://lain.bgm.tv/r/100/pic/cover/l/1a/22/284157_zgv97.jpg",
+            "large": "https://lain.bgm.tv/pic/cover/l/1a/22/284157_zgv97.jpg",
+            "medium": "https://lain.bgm.tv/r/800/pic/cover/l/1a/22/284157_zgv97.jpg",
+            "common": "https://lain.bgm.tv/r/400/pic/cover/l/1a/22/284157_zgv97.jpg"
+          },
+          "infobox": [
+            {
+              "key": "游戏类型",
+              "value": "ARPG"
+            },
+            {
+              "key": "开发",
+              "value": "米哈游"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "琅琊榜",
+      "subjects": [
+        {
+          "id": 123713,
+          "type": 6,
+          "name": "琅琊榜",
+          "name_cn": "琅琊榜",
+          "date": "2015-09-19",
+          "platform": "华语剧",
+          "images": {
+            "small": "https://lain.bgm.tv/r/200/pic/cover/l/e3/04/123713_2d9vR.jpg",
+            "grid": "https://lain.bgm.tv/r/100/pic/cover/l/e3/04/123713_2d9vR.jpg",
+            "large": "https://lain.bgm.tv/pic/cover/l/e3/04/123713_2d9vR.jpg",
+            "medium": "https://lain.bgm.tv/r/800/pic/cover/l/e3/04/123713_2d9vR.jpg",
+            "common": "https://lain.bgm.tv/r/400/pic/cover/l/e3/04/123713_2d9vR.jpg"
+          },
+          "infobox": [
+            {
+              "key": "导演",
+              "value": "孔笙、李雪"
+            },
+            {
+              "key": "类型",
+              "value": "古装、剧情"
+            },
+            {
+              "key": "国家/地区",
+              "value": "中国大陆"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "千与千寻",
+      "subjects": [
+        {
+          "id": 311,
+          "type": 2,
+          "name": "千と千尋の神隠し",
+          "name_cn": "千与千寻",
+          "date": "2001-07-20",
+          "platform": "剧场版",
+          "images": {
+            "small": "https://lain.bgm.tv/r/200/pic/cover/l/9d/fc/311_GAg3x.jpg",
+            "grid": "https://lain.bgm.tv/r/100/pic/cover/l/9d/fc/311_GAg3x.jpg",
+            "large": "https://lain.bgm.tv/pic/cover/l/9d/fc/311_GAg3x.jpg",
+            "medium": "https://lain.bgm.tv/r/800/pic/cover/l/9d/fc/311_GAg3x.jpg",
+            "common": "https://lain.bgm.tv/r/400/pic/cover/l/9d/fc/311_GAg3x.jpg"
+          },
+          "infobox": [
+            {
+              "key": "导演",
+              "value": "宮崎駿"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "query": "羊脂球",
+      "subjects": []
+    }
+  ]
+}
