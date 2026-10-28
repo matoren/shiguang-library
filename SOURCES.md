@@ -1,45 +1,98 @@
-# 联网资料来源与约束
+# 分类联网搜索调查与升级验收 v2.3
 
-## v2.2 当前策略（以下旧版说明仅作历史记录）
+本报告依据本次官方文档核对、实际 HTTP 请求与桌面内置浏览器测试。没有真实中国大陆安卓手机或多运营商线路测试；任何“成功”均不代表全国可用。接口连接、返回候选、命中正确作品、封面与本地存储分别记录。
 
-自动模式：**书籍：Bangumi → Open Library；电影/剧集/游戏：Bangumi → Wikidata，各尝试一次**。首源有候选即结束；错误/无匹配会显示原因并尝试一次备用。可手选来源，书籍另有 Open Library，剧集另有 TVmaze。没有后台抓取、循环重试或影视播放/网盘/磁力接口。
+## 现有项目与修改边界
 
-**Bangumi**：`POST https://api.bgm.tv/v0/search/subjects` 按作品名称查询，不需要登录、Token 或 Key。书籍type 1、影视type 2/6、游戏type 4，再区分电影/剧集。图书偏动漫，羊脂球实测空结果；影视游戏也非全量，不能保证大陆线路可用。文档标为实验性，故严格校验结构，失败不伪装无结果。
+本地现有项目存在，基于已发布 v2.2 增量修改。GitHub main 在开发前为 `8e816eb93e3099ecb2c4eb26240eab5bd7c1f6ba`，与前次发布一致。本地目录没有 Git 仓库，采用差异文件与 GitHub 当前提交作为发布基线；修改前完整复制至 `work/library-before-source-audit`，未重置或覆盖其他工作。
 
-- 官方文档：https://bangumi.github.io/api/ 、https://github.com/bangumi/api/blob/master/open-api/v0.yaml
-- 协议与权利：https://bgm.tv/about/copyright 。可在公开 API 范围开发应用，条目资料按 CC BY-SA；既有版权作品的权利仍归原权利人。本项目只保留必要元数据、来源与许可，不采集用户日志、评论或播放链接。API封面来自 lain.bgm.tv，缩放后用于个人收藏并保留来源说明，不宣称属于公有领域。
-- 实际预检和浏览器POST均成功，无凭证跨域响应为 `Access-Control-Allow-Origin: *`；预检允许Content-Type。不能据此宣称大陆所有线路均可用。
+`core.js` 与 `db.js` 保持逐字节不变。IndexedDB 名称、版本 1、评分公式、记录结构、备份 schemaVersion 1 全部维持。没有访问手机或生产网站的个人收藏，没有清空数据库。测试只使用本地隔离网址和随机命名的测试数据库。
 
-**Wikidata**改为影视/游戏的自动境外备用，书籍可手选，CC0、无Key；作者/类型标签失败时可显示部分结果并提示缺失。Commons只在选择候选后查询明确许可；未取得许可或图片下载失败保留文字/旧封面。
+## 实际启用策略
 
-**Open Library**按书名查询，不是仅ISBN；当前环境实际返回羊脂球与作者，但本次返回条目无封面。**TVmaze**只供剧集备用，可尝试原名，不把播出网络所在国当作制作国。其官方API免费、无Key、支持CORS，CC BY-SA并允许缓存图片，保留归属。https://www.tvmaze.com/api
+| 使用范围 | 自动首选 | 自动备用 | 说明 |
+|---|---|---|---|
+| 书籍 | NDL Search 日本国立国会图书馆本馆书目 | Open Library | 两者均为书目服务，含部分中文图书；不是国内数据库或完整中文出版数据库 |
+| 电影 | Bangumi | Wikidata | 当前无需密钥且实测命中中文作品的组合，覆盖有限；并未接入 TMDb |
+| 剧集 | Bangumi | Wikidata | 严格区别电影、剧集和季；TVmaze 保留手选 |
+| 普通游戏 | Bangumi | Wikidata | 能搜到黑神话；不宣称覆盖所有普通游戏 |
+| Galgame / 视觉小说 | VNDB Kana | Bangumi | 在搜索弹窗切换范围；不新增记录字段，不导入平台/时长 |
 
-### 请求、缓存与图片
+每次自动最多查询两个来源，首源无结果或报错才查询备用，各一次；有候选即停止，不以候选数量证明命中。可手选任意可用来源继续核对。图书手选仍保留 Wikidata 和 Bangumi，游戏也可手选 VNDB。百度、百度百科、豆瓣链接只打开正常搜索网页，不抓取、不自动导入。
 
-- 来源总预算：Bangumi9秒、Wikidata12秒、Open Library/TVmaze各8秒。书籍自动模式约17秒、其他约21秒上限，包含排队、来源内请求和异步解析，可随时停止。
-- 单请求默认8秒，作品实体6秒，创作者/类型名称3.5秒；同主机间隔约1秒。区分超时、HTTP错误、429、格式异常及空结果，不自动循环重试。
-- 浏览器一般不暴露DNS/TLS/CORS具体原因，网络异常明确列为“网络或跨域限制”，不虚构根因。
-- 封面许可3.5秒、下载6秒、整个封面阶段8秒上限；可关闭网络封面先填文字。图片仅接受明确白名单HTTPS域名，压缩为本地图片数据，备份保留署名。
-- 成功候选仅本机保存7天、最多24次查询，不含评分评论，不改变收藏数据库或备份。强制联网会同时绕过持久候选缓存和会话请求缓存。缓存损坏/配额不足不妨碍搜索与保存。
+NDL、Open Library、VNDB、TVmaze 每源总预算 8 秒；Bangumi 9 秒，Wikidata 12 秒。一次自动检索上限约 16—21 秒，包含解析/排队。单来源不循环重试；可随时停止。成功候选缓存 7 天/24 次查询，新策略及游戏范围使用隔离缓存键。强制联网绕过缓存。
 
-### 评估后未接入
+## 书籍候选来源逐项调查
 
-- 百度知识图谱：https://kgopen.baidu.com/ 当前可见联系入口，未取得可验证的通用作品查询接入文档与用途授权。未声称其不存在商业授权接口，仅提供百科外部搜索。
-- 豆瓣：https://developers.douban.com/ 本环境不可访问，未取得当前官方作品接口文档或授权；未用历史v2、Frodo内部接口、Cookie、抓取或反爬绕过。仅提供外部搜索。
-- 聚合ISBN：https://www.juhe.cn/docs/download/pdf/726 明确需Key和10/13位ISBN，不能替代书名搜索。未开通，未确认套餐/额度，未调用。
-- 书格：https://api.shuge.org/ 有古籍查询文档，范围有限。本环境返回 `Access-Control-Allow-Origin: *, *`，不足以认定浏览器CORS可用，未接入。
-- NeoDB：https://neodb.net/install/ 涉及上游Google/TMDb/IGDB凭证，不能据此消除上游授权与网络问题，未增加该实例依赖。
-- 未申请、购买或嵌入TMDb/IGDB等需要保密的凭证；没有新增后端、付费服务或模型调用。
+| 来源与正式文档 | 名称/中文搜索与字段 | 凭证、费用、个人用途与权利 | 实际请求/跨域/取舍 |
+|---|---|---|---|
+| [Google Books](https://developers.google.com/books/docs/v1/using) | 支持 q、intitle，不只是 ISBN；可返回作者、版本、图片；中文覆盖本次未确认 | 官方要求 Key 或 OAuth；需项目配置与额度，遵循展示条款；图片不是开放授权素材 | 生死疲劳真实请求 HTTP429、RESOURCE_EXHAUSTED；不能评价正确率。响应允许 Pages origin，但无可用额度；未接入，不创建账号或购买额度 |
+| [Open Library](https://openlibrary.org/developers/api)、[Search API](https://openlibrary.org/dev/docs/api/search)、[Covers API](https://openlibrary.org/dev/docs/api/covers) | 支持书名中文查询；标题、作者数组、版本年份、cover_i。版本合并可能包含译者 | 公开查询无需 Key；按限流/缓存规范使用，本应用同主机间隔至少1秒；元数据开放不等于封面版权转让 | 生死疲劳 HTTP200、1条正确标题、有 cover_i；作者列表 Mo Yan / Howard Goldblatt，混有译者，必须核对版本。CORS *；用作书籍备用，可手选保存公开封面，保留来源，禁止把封面再分发成素材库 |
+| [Crossref REST](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) | query.title 可检索中文 DOI 元数据；学术论文、章节、部分图书，不是一般小说库；没有通用封面字段 | 公共 REST 不需 Key，礼貌使用池及付费服务另行区分；多数书目事实可用，摘要/全文/图片各自许可 | 生死疲劳 HTTP200、CORS *；前5条是相关翻译论文、疲劳工程论文等，未命中原小说。放弃通用图书源，不能把模糊命中总数52596当成功 |
+| [中国国家图书馆](https://www.nlc.cn/web/index.shtml)、[公开目录](https://opac.nlc.cn/) | 官方网页可以查书名；未确认可供本项目直接调用的正式现代书名元数据 API | 网页可查阅不等于授权机器接口；未确认接口 Key、额度、图片与再分发条件 | 没有授权明确的接口可进行五作品式机器检索；不调用内部请求、不抓页面。不接入自动填充，可人工核对 |
+| [上海图书馆开放数据](https://opendata.library.sh.cn/)、[开发指南](https://data1.library.sh.cn/developguide) | 有正式开放数据项目，偏历史人文；不能推定覆盖现代中文小说 | APIKey/注册，按具体数据集许可；本次无凭证，不开账号 | 未验证生死疲劳的合法通用书名查询和 CORS；不作为默认现代书库 |
+| [NDL Search API](https://ndlsearch.ndl.go.jp/en/help/api/specifications)、[使用规则](https://ndlsearch.ndl.go.jp/en/help/api)、[数据提供者许可](https://ndlsearch.ndl.go.jp/en/help/api/provider) | OpenSearch title 支持中文，返回 XML；标题、作者、出版社、版本日期、原始资料链接。不是 ISBN-only | 个人非营利用途无需申请；本项目限定 `dpid=iss-ndl-opac` 本馆 CC BY 书目，注明 NDL Search API 与原条目；持续使用官方建议告知用途。禁止大量并发；不接缩略图 API | 生死疲劳 HTTP200、CORS *，本馆1个正确条目（2012版）；泛库查询另有13条，避免混入不同机构许可而不使用。已接入首选。只将版本年份放候选说明，记录年份留空；出版地不推成作者国籍 |
+| [百度知识图谱平台](https://kgopen.baidu.com/)、[豆瓣开发者平台](https://developers.douban.com/) | 百度官网开放能力需领域资质审核；未获得百科/豆瓣读书通用书名 API 的当前明确文档与授权 | 没有可用项目凭证或已确认额度/图片授权，不能认定个人网站可免费调用 | 不测试旧 v2、Frodo、内部接口；不宣称这些网站完全没有 API。仅正常网页外部核对，无自动填充 |
 
-无可确认的大陆运营商网络出口或安卓真机；开发环境成功不代表GitHub Pages、Bangumi或其他境外接口在大陆稳定。百度/百科/豆瓣仅正常网页导航，不会自动抓取或填入。
+NDL 目录署名中的汉字分隔与尾随生卒年做格式整理，用户仍可修改；不根据出版社/出版地猜作者国籍。Open Library 合并版本作者质量有限，因此此次选择授权清楚的 NDL 本馆书目在先，图书版本服务在后。
 
-## v2.0 历史说明（默认来源等以以上v2.2策略为准）
+## 电影/剧集来源逐项调查
 
-- Wikidata 结构化数据为 CC0；使用公开 Action API 搜索与实体读取，不需要应用密钥。文档：https://www.wikidata.org/wiki/Wikidata:Data_access 和 https://www.wikidata.org/wiki/Wikidata:Licensing 。
-- MediaWiki 跨域请求明确携带 `origin=*`，请求不带凭证。文档：https://www.mediawiki.org/wiki/API:Cross-site_requests 。
-- Wikimedia Commons 使用 Imageinfo 查询 URL、作者和许可；仅处理 Public domain、CC0、CC BY、CC BY-SA 明确许可的图片，保存归属与许可并说明缩放压缩。文档：https://www.mediawiki.org/wiki/API:Imageinfo 。
-- Open Library 搜索和封面为可选公开图书来源。文档：https://openlibrary.org/dev/docs/api/search 与 https://openlibrary.org/dev/docs/api/covers 。实测此环境有连接不稳定情况，因此默认使用 Wikidata。
-- Google Books 实测返回 429 配额错误，未作为默认来源。TMDb 需要注册密钥；IGDB 涉及访问令牌、Client Secret 和后端代理，不在公开静态前端中接入。没有注册付费服务或嵌入任何秘密密钥。
-- 请求由用户点击触发，间隔至少约一秒，有限内存缓存，不后台爬取。不自动重试限流响应。只发送检索词，不发送私人记录或评分。
-- 三类元数据搜索已接入。海报和游戏封面覆盖率取决于公开来源；缺图不是用临时 URL 替代本地保存的理由，仍提供手动上传。
+| 来源与正式文档 | 名称/中文与字段 | 凭证、费用、个人用途/权利 | 实测、静态架构与取舍 |
+|---|---|---|---|
+| [TMDb 文档](https://developer.themoviedb.org/docs)、[FAQ](https://developer.themoviedb.org/docs/faq) | 独立 movie、tv 名称检索，zh-CN；年份、海报、国家、类型，导演需 credits 等详情查询 | 账号申请 API Key/Token；非商业依条款免费，必须规定署名/Logo，不保证 SLA；元数据和海报权利不同。未申请 | 流浪地球2/movie、漫长的季节/tv 均 HTTP401，CORS *。仅验证未认证被拒，未验证授权后覆盖。未把凭证写前端；接入之前需配置和明确密钥方案 |
+| [IMDb 非商业数据集](https://data.imdb.com/non-commercial-datasets/) | 每日 TSV.gz，有作品类型、年份、类型、别名、人员ID；需下载并关联表来按中文名找，不是在线标题搜索 API；无海报 | 个人非商业可按数据许可使用本地副本；不能无限再分发或当通用开放图片源 | title.basics HEAD200，无 CORS；未下载巨型完整表、未本地建索引，五作品覆盖未验证。不适合手机静态前端，本次不接入 |
+| [Bangumi API](https://bangumi.github.io/api/)、[版权说明](https://bgm.tv/about/copyright) | 正式公开 POST 标题查询，中文；动画/真人影视，type2/6 后区分电影和剧集；有导演、日期、标签、图片，国家可能缺失 | 此查询无需 Key/登录，非商业个人应用可在公开 API 范围使用；条目 CC BY-SA，既有版权封面依原权利人；保留来源与整理标记，不收集用户评论或播放链接 | 两个指定影视作品均200且正确；CORS *、JSON POST可用。实际浏览器取图、解码、本地备份成功。保留首选是因为此次指定影视真实命中且无新凭证；不是认为它覆盖所有影视 |
+| [哔哩哔哩开放平台](https://openhome.bilibili.com/doc)、[开发协议](https://openhome.bilibili.com/agreement/developer-service) | 正式文档主要为授权账号、投稿/视频稿件与直播，不等同于全站番剧/影视元数据名称搜索 | 身份认证、创建应用、授权签名与协议；没有取得通用元数据与海报授权 | 未确认适合本项目的正式番剧名称检索授权，未调用逆向 WBI/内部接口。不作为核心源，作品覆盖及此用途 CORS 未验证 |
+| [猫眼开放入口](https://open.maoyan.com/)、[用户条款](https://m.maoyan.com/terms.html) | 未获得面向此个人项目的正式通用电影+剧集名称查询文档 | 商务/合作条件、费用及图片再用授权未确认；不得以网页可访问推定可抓取 | 开放入口未能取得可用公开文档；不试内部 ajax 和盗版聚合源，不接入。流浪地球2、漫长的季节覆盖均未验证 |
 
+[Wikidata](https://www.wikidata.org/wiki/Wikidata:Data_access) 保留通用备用，元数据 CC0、无 Key，Commons 图需另核许可。此次 HTTP 实测：生死疲劳、流浪地球2、黑神话有正确结果；漫长的季节接口错误，ATRI 遇429。说明即使开发环境可连也不稳定。未改成所有板块默认首选。[TVmaze](https://www.tvmaze.com/api) 保留剧集手选，免费、无 Key、CORS、CC BY-SA；本次指定中文剧集尚未完成其正确覆盖验证，不算本次成功项。
+
+## 游戏来源逐项调查
+
+| 来源与正式文档 | 名称、中文、字段 | 凭证、费用、个人用途/权利 | 实测、静态架构与取舍 |
+|---|---|---|---|
+| [IGDB](https://api-docs.igdb.com/) | 支持名称搜索、发行时间、开发商、类型、封面；中文别名质量需实测 | Twitch开发账号、Client ID/Secret、应用令牌；非商业免费依协议，4请求/秒、8并发；商业另议，图片不是无版权 | 黑神话、ATRI均401。官方不支持浏览器CORS；须后端保护 Secret/换令牌。没有后端/凭证，不能验证中文覆盖，不接入 |
+| [RAWG](https://rawg.io/apidocs) | 支持 search，详情有开发商、日期、类型、图片；中文覆盖未验证 | 账号+Key；文档个人非商业 Free 为20,000请求/月，需回链署名；商业套餐另计，不开通。遵守 API/图权条款 | 两作均401缺Key；错误响应无CORS，不据此断言付Key后一定无CORS。未验证授权请求与结果，不把Key公开，不接入 |
+| [Steam Web API](https://partner.steamgames.com/doc/webapi)、[IStoreService](https://partner.steamgames.com/doc/webapi/IStoreService) | 正式应用清单不等于中文名称+开发商+封面的完整标题检索；商店网页搜索可人工用 | 部分方法需Web API Key/权限；图片与商店资料另有权利，不能假定可批量再分发 | 官方GetAppList无Key403、无CORS，只验证认证端点，不是两作品检索测试。不将未文档化商店 ajax/appdetails 冒充正式方案，不接入 |
+| [VNDB Kana](https://api.vndb.org/kana)、[数据许可](https://vndb.org/d17) | 当前HTTPS POST名称搜索，含中文别名、开发商、发行日期；仅视觉小说。用户提供的 Nyan 是废弃TCP旧接口，未使用 | 公共查询无认证，非商业免费，200次/5分钟且SQL预算受限；ODbL/DCL，需要保留来源，公开派生数据库另守许可。图片/简介是单独版权，不随元数据开放 | 黑神话200空结果，正确体现范围外；ATRI200正确v27448，中文别名、Makura/Frontwing、2020。预检204及实际CORS成功。已接入Galgame首选；不请求/保存其图片与长简介，保留手动封面 |
+| [Bangumi](https://bangumi.github.io/api/) | 同上，type4游戏；非全量库 | 无Key，CC BY-SA元数据，原封面权利保留；注明来源 | 黑神话200正确、游戏科学/2024/ARPG，真实取图成功。ATRI完整名200但返回大冒险岛等不相关作品，不能算匹配；放作普通游戏首选与Galgame备用 |
+| [月幕Galgame](https://www.ymgal.games/developer)、[开放共享](https://www.ymgal.games/opensource) | 有正式OAuth2公开API，中文/原名/别名模糊检索；开发商、发行日期、图片 | 非商业免费，需署名，限流缓存；官方发布共享实验凭证，不等于用户私密Key。专属Secret不能公开，图片/描述仍有原权利条件 | 无Origin的服务器请求认证200，ATRI搜索200并正确；带当前Pages Origin认证403，预检403 Invalid CORS request。确认技术上存在静态跨域阻碍；未绕过、未新增代理。作为后续可评估项，不接入；黑神话不属其主要范围，未在授权浏览器流程验证 |
+
+选择 Bangumi 作为普通游戏暂时首选是本次真实无密钥可用性与现有架构的折中；IGDB/RAWG覆盖潜力更好但没有完成凭证、中文准确率与浏览器链路验证。不会将“有文档”写成“已经可在手机使用”。
+
+## 五作品实际验收
+
+| 作品 | 最终策略真实浏览器候选 | 字段质量 | 封面 |
+|---|---|---|---|
+| 生死疲劳 | NDL本馆书目，正确 | 莫言（原目录署名含生年）、作家出版社2012版本仅候选说明；国家空，保存年份空/旧隐藏值保留 | NDL无封面，未下载；可切Open Library（其图ID存在但此作本地保存未专测），或上传 |
+| 流浪地球2 | Bangumi320871，正确 | 郭帆/2023/科幻·冒险·灾难；不存在的国家信息不猜 | 实际下载解码，本地重开与备份恢复一致 |
+| 漫长的季节 | Bangumi431299，正确 | 辛爽/2023/剧情·家庭·犯罪，作为剧集检索 | 实际下载解码，本地重开与备份恢复一致 |
+| 黑神话：悟空 | Bangumi313495，正确 | 游戏科学/2024/ARPG，不导入平台或时长 | 实际下载解码，本地重开与备份恢复一致 |
+| ATRI -My Dear Moments- | VNDB v27448，正确 | 亚托莉中文名、Makura / Frontwing、2020、视觉小说 | 权利未单独确认，明确手动上传；未将图库URL当本地保存成功 |
+
+本次运行的五作品测试是测试页面中的数据，不会写入生产收藏。运行的自动化测试78项覆盖评分、去重、备份、旧字段、电影/剧集与新来源策略；浏览器原有存储11项、升级15项、剧集18项、搜索故障12项均重新通过。五作品浏览器另验证真实请求、自动字段映射保留评分评论、书籍隐藏年份、封面解码、关闭重开独立数据库、导出校验与另一数据库恢复；详细证据随本地工作目录保存。手动界面实际选择NDL候选，修改作者并保存，原评论仍在；Galgame切换、ATRI候选点击填入、两源模拟失败后手动保存评论均通过。320/360像素预览未出现横向溢出。
+
+没有重新承诺此前全部手机实测；本次手机尺寸为桌面窄屏预览，安卓安装、真实离线与各运营商网络仍需验收。没有读取用户生产数据，不能声称已逐条对比手机收藏；数据安全依据是存储/评分代码不变与旧备份回归测试。
+
+## GLM、费用与后端
+
+用户额度为智谱开放平台通用API余额/资源包，不是任意聊天Token。GLM不能解除资料API跨域或保证事实正确，此次不接入模型，不收集密钥、不产生模型调用费用。
+
+本版无需用户API Key、不新建账号、不购买资源、不新增后端，维持GitHub Pages与本地IndexedDB。若以后启用IGDB等必须保护Secret或月幕跨域需服务端支持，应另说明部署区域、免费额度限制、大陆可达性及持续维护；免费海外函数不代表国内稳定。境内服务、域名和备案适用条件需结合具体部署核实，此次没有迁移或开通。
+
+## 安卓验收步骤
+
+1. 在当前使用的网址“我的 → 设置与数据”先导出完整备份，保留下载文件；不要清除网站数据或换浏览器。
+2. 检查应用更新、重新打开，设置中确认 v2.3.0，现有收藏数量、评论、评分、封面与升级前一致。
+3. 搜索生死疲劳，确认自动先NDL、失败仅一次Open Library备用；分别手选两个书目源核对版本。选择后不出现书籍出版年份字段，作者能改，封面缺失可上传。
+4. 分别选电影与剧集搜索流浪地球2、漫长的季节，检查导演/主创、2023、类型及封面；自己确认保存，刷新后检查。
+5. 游戏普通范围搜索黑神话：悟空；再将范围改为Galgame/视觉小说搜索ATRI -My Dear Moments-，确认先VNDB，未新增平台/时长字段。给ATRI手动上传有权使用的封面。
+6. 断网打开搜索，确认错误清晰，可返回手动添加、评分、写评论；恢复网络后可强制联网或手选来源，不无限等待。
+7. 在自己愿意保留的记录中完成评分和评论，导出备份。若要测试恢复，可在另一浏览器/设备导入备份；不要覆盖唯一原始库。核对数量、原评分、评论与封面。
+
+如某来源手机仍失败，记录作品、来源、提示、运营商与Wi-Fi/流量即可，不需要发送密钥或私人数据库。外部核对链接和手动填写始终可用。
+
+## 发布记录
+
+本报告随 v2.3 发布。采用 GitHub Pages，最终提交、工作流结果与线上文件核对结果见本次交付说明；报告本身不作为已部署证据。

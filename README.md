@@ -1,3 +1,7 @@
+# v2.3 分类联网搜索升级
+
+书籍：NDL 本馆书目 → Open Library；电影/剧集与普通游戏：Bangumi → Wikidata；在搜索弹窗选择 Galgame / 视觉小说后：VNDB Kana → Bangumi。无需新增 Key、后端或费用；完整逐项调查、真实作品结果与安卓验收见 [SOURCES.md](SOURCES.md)。数据结构、评分和备份保持兼容。
+
 # 一不小心就记住了
 
 收藏喜欢的作品，记录真实的评价。
