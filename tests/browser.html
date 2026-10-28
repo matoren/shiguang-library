@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>IndexedDB 集成测试</title><h1>真实浏览器存储集成测试</h1><p>仅操作独立测试数据库，不访问用户收藏馆。</p><pre id="results">运行中…</pre><script type="module">
-import {openDB,readAll,commit} from '../db.js';import {defaults,WEIGHTS,calculate,backup,validateBackup,mergeRecords} from '../core.js';
+import {openDB,readAll,commit} from '../db.js?upgrade=2';import {defaults,WEIGHTS,calculate,backup,validateBackup,mergeRecords} from '../core.js?upgrade=2';
 const out=document.querySelector('#results');const logs=[];const name='shiguang-test-'+crypto.randomUUID();let db;
 function check(ok,label){if(!ok)throw Error(label);logs.push('通过：'+label);out.textContent=logs.join('\n');}
 try{db=await openDB(name);const r={id:crypto.randomUUID(),type:'book',title:'存储测试',creator:'测试作者',country:'中国',year:'2026',category:'文学小说',tags:['测试'],status:'已读',date:'2026-10-27',comment:'封面和评论恢复',scores:[9,8,8,7,8,9],weights:WEIGHTS[0],mode:'standard',quick:null,manual:6.9,adjusted:true,computed:8.3,final:6.9,ruleVersion:1,cover:null,thumb:null,created:new Date().toISOString(),updated:new Date().toISOString()};const c=document.createElement('canvas');c.width=c.height=10;c.getContext('2d').fillRect(0,0,10,10);r.cover=r.thumb=c.toDataURL('image/png');let settings=defaults();settings.weights[0]=[20,25,20,10,15,10];settings.ruleVersion=2;
