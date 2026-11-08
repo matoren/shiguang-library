@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {BANKS} from '../rating-options.js';import {dimensionScore} from '../checklist.js';import {searchAcross} from '../search-policy.js';
+test('实际选项库直接矛盾可拒绝，非矛盾正负评价可并存',()=>{const bank=BANKS['movie:film'][0];assert.throws(()=>dimensionScore({status:'rated',selected:[bank[0].id,bank[10].id]},bank));assert.equal(dimensionScore({status:'rated',selected:[bank[1].id,bank[11].id]},bank),5.5);});
+test('部分来源失败且候选名称不匹配时仅尝试一次第三源',async()=>{const calls=[];const r=await searchAcross('movie','中文剧名',{kind:'series',cache:{get:()=>null,put:()=>{}},runner:async(t,q,p)=>{calls.push(p);if(p==='wikidata')throw Error('来源不可用');return [{id:p,title:p==='bangumi'?q:'Unrelated show',source:{provider:p}}];}});assert.deepEqual(calls,['tvmaze','wikidata','bangumi']);assert(r.items.some(c=>c.title==='中文剧名'));});
+
+import {archiveSavedRating} from '../checklist.js';
+test('编辑旧快速分也保留原始评分，改元数据不产生评分历史',()=>{const old={scores:[8,8,8,8],weights:[35,25,20,20],computed:8,final:7,quick:7,mode:'quick',manual:null,adjusted:false};assert.equal(archiveSavedRating({...old,title:'改名'},old).ratingHistory,undefined);const next=archiveSavedRating({...old,quick:8.5,final:8.5},old);assert.equal(next.ratingHistory[0].snapshot.quick,7);assert.equal(old.quick,7);assert.equal(archiveSavedRating(next,old).ratingHistory.length,1);});

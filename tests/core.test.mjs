@@ -8,7 +8,7 @@ test('零分严格区别于未评分',()=>{assert.equal(calculate([0,null,null,n
 test('部分评分按有效权重归一化',()=>assert.equal(calculate([10,0,null,null,null,null],WEIGHTS[0]),5.6));
 test('四舍五入 8.25 为 8.3',()=>assert.equal(calculate([8,8.5],[50,50]),8.3));
 test('电影四维权重',()=>assert.equal(calculate([8,9,7,8],MOVIE_WEIGHTS),8.1));
-test('等级和低分边界',()=>{assert.equal(scoreText(6.9),'✳ 6.9');assert.equal(scoreText(7),'7.0');assert.equal(grade(9.5),'杰作');assert.equal(grade(0),'较差');});
+test('等级和低分边界',()=>{assert.equal(scoreText(6.9),'✳ 6.9');assert.equal(scoreText(7),'7.0');assert.equal(grade(9.5),'非常优秀');assert.equal(grade(0),'严重缺陷');});
 test('手动评分保留原始计算结果',()=>{const r=valid({adjusted:true,manual:9.2});assert.equal(r.computed,8.3);assert.equal(r.final,9.2);});
 test('电影快速模式保留维度数据',()=>{const r=valid({type:'movie',category:'剧情',status:'已看',scores:[8,9,7,8],weights:MOVIE_WEIGHTS,mode:'quick',quick:6.9});assert.equal(r.final,6.9);assert.equal(r.computed,8.1);validateBackup(backup([r],defaults()));});
 test('完整 JSON 备份恢复数量、评分、评论、权重、封面',()=>{const original=backup([valid()],defaults());const restored=validateBackup(JSON.parse(JSON.stringify(original)));assert.deepEqual(restored,original);});
