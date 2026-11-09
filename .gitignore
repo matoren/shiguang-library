@@ -6,3 +6,7 @@ exports/
 *backup*.json
 *.zip
 .DS_Store
+
+.wrangler/
+.dev.vars*
+*.sqlite*

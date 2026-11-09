@@ -1,0 +1,23 @@
+name = "shiguang-glm-search"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+GLM_ALLOWED_ORIGINS = "https://matoren.github.io"
+GLM_SEARCH_ENGINE = "search_pro"
+GLM_DAILY_LIMIT = "6"
+GLM_MONTHLY_LIMIT = "30"
+GLM_ALLOW_SEARCH = "false"
+
+[observability]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "SEARCH_STATE"
+class_name = "SearchState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SearchState"]
