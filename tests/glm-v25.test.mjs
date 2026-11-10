@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGateway } from '../proxy/gateway.mjs';
-import { validateQuery, searchPages, groundedCandidates } from '../proxy/zhipu.mjs';
+import { validateQuery, searchPages, groundedCandidates, retrieve } from '../proxy/zhipu.mjs';
 import { proxyEndpoint, searchLibrary } from '../glm-search.js';
 
 const origin = 'https://matoren.github.io';
@@ -33,7 +33,7 @@ for (const [kind,title,marker,role,creator] of cases) {
     const calls = [];
     const fetcher = async (url, init) => {
       assert.equal(init.headers.Authorization, 'Bearer fixture-provider-key');
-      assert.equal(init.redirect,'error');
+      assert.equal(init.redirect,'manual');
       const body = JSON.parse(init.body);
       calls.push(url);
       if (url.endsWith('/web_search')) {
@@ -172,4 +172,18 @@ test('综合结果保留数据库与网页不同版本，GLM 可单独使用',as
     cache:{get:()=>null,put(){}},runner:async()=>[db]};
   assert.deepEqual(new Set((await searchLibrary('movie','样例',options,glm)).items),new Set([db,web]));
   assert.deepEqual((await searchLibrary('movie','样例',{...options,provider:'glm'},glm)).items,[web]);
+});
+
+test('Cloudflare-compatible manual redirect never forwards the provider key', async () => {
+  let calls = 0;
+  await assert.rejects(retrieve(validateQuery({kind:'film',title:'样例电影'}), {
+    key:'fake',engine:'search_pro',onExtraction(){},
+    fetcher:async (url,options)=>{
+      calls++;
+      assert.equal(url,'https://open.bigmodel.cn/api/paas/v4/web_search');
+      assert.equal(options.redirect,'manual');
+      return new Response(null,{status:307,headers:{Location:'https://another.example/'}});
+    }
+  }), {code:'glm-redirect'});
+  assert.equal(calls,1);
 });

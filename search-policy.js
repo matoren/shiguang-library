@@ -8,6 +8,19 @@ export function externalSearches(type,title,kind='film'){
  const q=title.trim().slice(0,150),hint=type==='book'?'书籍 作者':type==='game'?'游戏 开发商':kind==='series'?'电视剧 主创':'电影 导演';
  return [{label:'在百度搜索',url:'https://www.baidu.com/s?'+new URLSearchParams({wd:q+' '+hint})},{label:'在百度百科搜索',url:'https://baike.baidu.com/search/word?'+new URLSearchParams({word:q})},{label:'在豆瓣搜索',url:'https://www.douban.com/search?'+new URLSearchParams({q:q+' '+(type==='book'?'书籍':type==='game'?'游戏':kind==='series'?'剧集':'电影')})}];
 }
+export function posterSearchUrl(title, kind, release) {
+ const name = title.trim();
+ if (!name) return '';
+ const year = release.match(/^\d{4}(?:-|$)/)?.[0].slice(0,4) || '';
+ const query = [name, year, kind==='series'?'剧集':'电影', '官方海报'].filter(Boolean).join(' ');
+ return 'https://image.baidu.com/search/index?' + new URLSearchParams({tn:'baiduimage', word:query});
+}
+export const filmTitleKey=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+export function exactFilmCandidates(type,kind,query,items){
+ if(type!=='movie'||kind!=='film')return items;
+ const title=filmTitleKey(query);
+ return items.filter(item=>[item.title,...(item.aliases||[])].some(name=>title&&filmTitleKey(name)===title));
+}
 const CACHE_KEY='remember-public-metadata-v1',TTL=7*864e5;
 export function metadataCache(storage){
  const read=()=>{try{const rows=JSON.parse(storage?.getItem(CACHE_KEY)||'[]');return Array.isArray(rows)?rows.filter(r=>r&&typeof r.at==='number'&&Date.now()-r.at<TTL&&Array.isArray(r.items)).slice(0,24):[];}catch{return [];}};
@@ -24,14 +37,14 @@ export async function boundedSource(task,signal,ms){
 export async function searchAcross(type,query,{provider='auto',kind='film',scope='general',signal,onProgress=()=>{},onResults=()=>{},refresh=false,offline=globalThis.navigator?.onLine===false,runner=searchWorks,cache=localCache(),budgets={bangumi:5000,wikidata:5000,openlibrary:5000,tvmaze:4000,ndl:5000,vndb:5000}}={}){
  query=query.trim();if(!query||query.length>150)throw Error('请输入 1—150 个字的作品名称');if(signal?.aborted)throw abortError();
  const allowed=sourceOptions(type,kind,scope);if(provider!=='auto'&&!allowed.includes(provider))throw Error('所选来源不支持当前作品类型');
- const key=JSON.stringify(['strategy-v24',type,kind,scope,query,provider]),cached=!refresh&&cache.get(key);if(cached){onProgress({source:'cache',state:'cached',count:cached.items.length});return {items:cached.items,attempts:[],cachedAt:cached.at,fromCache:true};}
+ const key=JSON.stringify(['strategy-v24',type,kind,scope,query,provider]),cached=!refresh&&cache.get(key);if(cached){const items=exactFilmCandidates(type,kind,query,cached.items);if(items.length){onProgress({source:'cache',state:'cached',count:items.length});return {items,attempts:[],cachedAt:cached.at,fromCache:true};}}
  if(offline){const attempt={source:'network',state:'error',code:'offline',message:'当前处于离线状态，且没有可用候选缓存；可继续手动填写'};onProgress(attempt);return {items:[],attempts:[attempt],fromCache:false};}
  if(refresh&&runner===searchWorks)clearRequestCache();
  const plan=provider==='auto'?automaticSources(type,scope,kind):[provider],attempts=[],all=[];
  const publish=()=>onResults(structuredClone(all));
  const run=async source=>{
   if(signal?.aborted)throw abortError();const start=Date.now();onProgress({source,state:'loading'});
-  try{const items=await boundedSource(s=>runner(type,query,source,s,kind),signal,budgets[source]??5000);if(!Array.isArray(items))throw Error('候选结果格式不正确');
+  try{const rows=await boundedSource(s=>runner(type,query,source,s,kind),signal,budgets[source]??5000);if(!Array.isArray(rows))throw Error('候选结果格式不正确');const items=exactFilmCandidates(type,kind,query,rows);
    const attempt={source,state:items.length?'success':'empty',count:items.length,ms:Date.now()-start};attempts.push(attempt);onProgress(attempt);
    // Identity is source-specific: do not merge editions just because titles match.
    for(const item of items)if(!all.some(c=>c.source?.provider===item.source?.provider&&String(c.id)===String(item.id)&&c.source?.url===item.source?.url))all.push(item);publish();

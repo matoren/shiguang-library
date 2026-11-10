@@ -1,4 +1,4 @@
-import {searchAcross, boundedSource} from './search-policy.js';
+import {searchAcross, boundedSource, exactFilmCandidates, filmTitleKey} from './search-policy.js';
 
 const SETTINGS_KEY = 'remember-glm-proxy-v1';
 const LABEL = 'GLM 联网搜索';
@@ -79,25 +79,35 @@ export function disconnectGlm() {
   connection = null;
 }
 
-export async function searchGlm(type, title, {kind, scope, signal}) {
+export async function searchGlm(type, title, {kind, scope, signal, refresh}) {
   if (!preference.enabled || !connection) throw Error('请先在“设置与数据”启用 GLM 搜索并连接代理。');
   const session = connection;
   const media = type === 'movie' ? kind === 'series' ? 'series' : 'film'
     : type === 'game' && scope === 'galgame' ? 'galgame' : type;
-  const data = await proxyRequest(session, '/search', {body: {kind: media, title}, signal});
+  const data = await proxyRequest(session, '/search', {body: {kind: media, title, ...(refresh ? {refresh: true} : {})}, signal});
   if (session === connection) session.usage = data.usage;
   if (!Array.isArray(data.items) || !Array.isArray(data.pages)) throw Error('GLM 代理返回的候选格式不正确。');
   const items = data.items.filter(candidate => candidate?.title && candidate.type === type &&
       (type !== 'movie' || candidate.screenType === kind))
     .map(candidate => ({
       id: candidate.id, type, ...(type === 'movie' ? {screenType: kind} : {}), title: candidate.title,
-      creator: candidate.creator, year: type === 'book' ? '' : candidate.year, country: candidate.country,
+      creator: candidate.creator, releaseDate: candidate.releaseDate, year: type === 'book' ? '' : candidate.year, country: candidate.country,
       category: candidate.category, version: candidate.version, description: candidate.description,
       notice: '请核对字段证据和作品版本。',
       source: {provider: LABEL, url: candidate.source?.url, identity: candidate.source?.identity,
         fields: candidate.source?.fields, conflicts: candidate.source?.conflicts, pages: candidate.source?.pages}
     }));
   return {...data, items};
+}
+
+function withMatchingPosters(items) {
+  return items.map(item => {
+    if (item.source?.provider !== LABEL || item.imageUrl || item.imageName || !item.year || !item.creator) return item;
+    const sameFilm = items.find(other => other.source?.provider !== LABEL && (other.imageUrl || other.imageName) &&
+      String(other.year) === String(item.year) && filmTitleKey(other.creator) === filmTitleKey(item.creator) &&
+      [other.title, ...(other.aliases || [])].some(name => filmTitleKey(name) === filmTitleKey(item.title)));
+    return sameFilm ? {...item, imageUrl: sameFilm.imageUrl, imageName: sameFilm.imageName, coverSource: sameFilm.coverSource} : item;
+  });
 }
 
 // Structured candidates keep their existing cache and source scheduler.
@@ -112,6 +122,7 @@ export async function searchLibrary(type, title, options, glm = searchGlm) {
   if (signal?.aborted) throw new DOMException('搜索已取消', 'AbortError');
   let combined = [];
   const seen = new Set();
+  const present = () => type === 'movie' && options.kind === 'film' ? withMatchingPosters(combined) : [...combined];
   const append = items => {
     for (const candidate of items) {
       const key = JSON.stringify([candidate.source?.provider, candidate.id, candidate.source?.url]);
@@ -119,7 +130,7 @@ export async function searchLibrary(type, title, options, glm = searchGlm) {
       seen.add(key);
       combined.push(candidate);
     }
-    onResults?.([...combined]);
+    onResults?.(present());
   };
   const glmAttempts = [];
   const structuredTask = provider === 'glm' ? Promise.resolve({attempts: [], items: []})
@@ -130,13 +141,14 @@ export async function searchLibrary(type, title, options, glm = searchGlm) {
   const started = Date.now();
   onProgress?.({source: 'glm', state: 'loading'});
   const glmTask = boundedSource(s => glm(type, query, {...options, signal: s}), signal, 29000).then(result => {
-    const attempt = {source: 'glm', state: result.items.length ? 'success' : 'empty',
-      count: result.items.length, ms: Date.now() - started,
-      ...(result.extractionError ? {state: 'error', message: '已找到网页，字段整理未完成。'} : {})};
+    const items = exactFilmCandidates(type, options.kind, query, result.items);
+    const attempt = {source: 'glm', state: items.length ? 'success' : 'empty',
+      count: items.length, ms: Date.now() - started, cached: result.cached === true,
+      ...(result.extractionError && !items.length ? {state: 'error', message: result.extractionError} : {})};
     glmAttempts.push(attempt);
     onProgress?.(attempt);
-    onGlm?.(result);
-    append(result.items);
+    onGlm?.({...result, items});
+    append(items);
   }).catch(error => {
     if (signal?.aborted) throw error;
     const attempt = {source: 'glm', state: 'error', code: error.code, message: error.message, ms: Date.now() - started};
@@ -149,5 +161,5 @@ export async function searchLibrary(type, title, options, glm = searchGlm) {
     onProgress?.({source: 'structured', state: 'error', message: database.reason.message});
   }
   if (ai.status === 'rejected') throw ai.reason;
-  return {items: combined, fromCache: false, attempts: [...(database.value?.attempts || []), ...glmAttempts]};
+  return {items: present(), fromCache: false, attempts: [...(database.value?.attempts || []), ...glmAttempts]};
 }

@@ -1,7 +1,9 @@
+import {validReleaseDate} from '../core.js';
+
 const BASE = 'https://open.bigmodel.cn/api/paas/v4';
 const HINTS = {
   book: '图书 作者 译本 出版社 ISBN',
-  film: '电影 导演 上映年份 制片地区 类型',
+  film: '电影资料 导演 上映日期 制片国家 海报',
   series: '电视剧 主创 首播年份 制作地区 类型',
   game: '游戏 开发商 发行年份 类型 官方',
   galgame: '视觉小说 Galgame 开发商 首发年份 官方'
@@ -42,8 +44,9 @@ export function validateQuery(body) {
     throw new ProxyError('input', 400, '请输入有效的作品名称和类别（名称最多 150 字）。');
   }
   const hint = HINTS[kind];
-  let queryTitle = title.slice(0, 69 - hint.length);
+  let queryTitle = title.slice(0, (kind === 'film' ? 67 : 69) - hint.length);
   if (/[\uD800-\uDBFF]$/.test(queryTitle)) queryTitle = queryTitle.slice(0, -1);
+  if (kind === 'film') return {kind, title, query: '《' + queryTitle + '》 ' + hint};
   return {kind, title, query: queryTitle + ' ' + hint};
 }
 
@@ -82,7 +85,7 @@ export function groundedCandidates(response, pages, input) {
     if (!title || work.kind !== input.kind || !page || !quote ||
         !page.summary.includes(quote) && !page.title.includes(quote)) continue;
     if (!quote.includes(title) || !MARKERS[input.kind].test(quote)) continue;
-    if (!identity(title).includes(term) && !identity(quote).includes(term)) continue;
+    if (input.kind === 'film' ? identity(title) !== term : !identity(title).includes(term) && !identity(quote).includes(term)) continue;
     const fields = {};
     const conflicts = {};
     const related = new Map([[page.id, page]]);
@@ -132,14 +135,77 @@ export function groundedCandidates(response, pages, input) {
   return candidates;
 }
 
+function isFilmPage(page, title) {
+  const names = [...page.title.matchAll(/《([^》]+)》|“([^”]+)”|"([^"]+)"/g)].map(match => match[1] || match[2] || match[3]);
+  if (names.length) return names.length === 1 && identity(names[0]) === identity(title);
+  const heading = page.title.replace(/(?:\s*[_｜|—].*|\s*[（(]\d{4}[）)]\s*)$/, '');
+  return identity(heading) === identity(title);
+}
+const filmLabels = {
+  creator: /(?:^|[\s，。；;])导演\s*[:：]\s*([\p{Script=Han}·]{2,12}(?:\s*[/／、]\s*[\p{Script=Han}·]{2,12})*)(?=$|[\s，。；;])/gu,
+  country: /(?:^|[\s，。；;])(?:制片|制作)(?:国家\s*[/／]\s*地区|国家|地区)\s*[:：]\s*([\p{Script=Han}]{2,12}(?:\s*[/／、]\s*[\p{Script=Han}]{2,12})*)(?=$|[\s，。；;])/gu,
+  releaseDate: /(?:^|[\s，。；;])(?:上映|公映)(?:日期|时间)\s*[:：]\s*((?:18|19|20)\d{2}(?:[-./]\d{1,2}[-./]\d{1,2}|年\d{1,2}月\d{1,2}日))(?=$|[\s(（，。；;])/gu
+};
+function filmFacts(pages, title) {
+  return pages.filter(page => isFilmPage(page, title)).flatMap(page => {
+    const fields = {};
+    const conflicts = {};
+    const details = {title: page.title, url: page.url};
+    for (const [key, label] of Object.entries(filmLabels)) {
+      const claims = new Map();
+      for (const match of page.summary.matchAll(label)) {
+        let value = match[1];
+        if (key === 'releaseDate') {
+          value = (value.match(/\d+/g) || []).map(part => part.padStart(2, '0')).join('-');
+          if (!validReleaseDate(value)) continue;
+        }
+        claims.set(value, {value, evidence: [{...details, quote: match[0].trim()}]});
+      }
+      if (claims.size === 1) fields[key] = [...claims.values()][0];
+      if (claims.size > 1) conflicts[key] = [...claims.values()];
+    }
+    if (!Object.keys(fields).length && !Object.keys(conflicts).length) return [];
+    const releaseDate = fields.releaseDate?.value || '';
+    return [{
+      id: 'glm-film:' + page.id, title, type: 'movie', screenType: 'film',
+      creator: fields.creator?.value || '', releaseDate, year: releaseDate.slice(0, 4),
+      country: fields.country?.value || '',
+      source: {provider: 'GLM 联网搜索', url: page.url, identity: {...details, quote: page.title}, fields, conflicts}
+    }];
+  });
+}
+function countFilmFacts(item) {
+  return Number(Boolean(item.creator)) + Number(Boolean(item.releaseDate || item.year)) + Number(Boolean(item.country));
+}
+export function restoreFilmFacts(result, input) {
+  if (input.kind !== 'film') return result;
+  const pages = result.pages.filter(page => isFilmPage(page, input.title));
+  const items = result.items.filter(item => identity(item.title) === identity(input.title));
+  for (const candidate of filmFacts(pages, input.title)) {
+    const index = items.findIndex(item => item.source?.url === candidate.source.url);
+    if (index === -1) items.push(candidate);
+    else if (!Object.keys(items[index].source?.conflicts || {}).length &&
+        (countFilmFacts(candidate) > countFilmFacts(items[index]) ||
+         countFilmFacts(candidate) === countFilmFacts(items[index]) && candidate.releaseDate && !items[index].releaseDate)) {
+      items[index] = candidate;
+    }
+  }
+  return {...result, pages, items: items.sort((a,b) => countFilmFacts(b) - countFilmFacts(a)).slice(0,4)};
+}
+
+
 async function post(endpoint, payload, key, fetcher, timeout) {
   const signal = AbortSignal.timeout(timeout);
   try {
     const response = await fetcher(BASE + endpoint, {
-      method: 'POST', redirect: 'error', signal,
+      method: 'POST', redirect: 'manual', signal,
       headers: {Authorization: 'Bearer ' + key, 'Content-Type': 'application/json'},
       body: JSON.stringify(payload)
     });
+    // Workers supports manual redirects. Never forward the API key to a new URL.
+    if (response.status >= 300 && response.status < 400 || response.type === 'opaqueredirect') {
+      throw new ProxyError('glm-redirect', 502, '智谱接口返回了跳转，代理已停止请求。');
+    }
     const data = await response.json().catch(() => null);
     if (String(data?.error?.code) === '1113') throw new ProxyError('glm-balance', 402, '智谱账户余额或资源额度不足，请查看控制台。');
     if ([401, 403].includes(response.status)) throw new ProxyError('glm-auth', 502, '智谱拒绝授权，请核对标准 API 密钥与服务权限。');
@@ -161,6 +227,8 @@ export async function retrieve(input, {key, engine, fetcher = fetch, onExtractio
   const searchMs = Date.now() - searchStart;
   const result = {pages, items: [], engine, query: input.query, returnedCount: search.search_result.length, searchMs, extractionMs: 0};
   if (!pages.length) return result;
+  const quick = restoreFilmFacts(result, input);
+  if (quick.items.some(item => input.kind === 'film' && countFilmFacts(item) === 3)) return quick;
   const extractionStart = Date.now();
   try {
     onExtraction();
@@ -181,5 +249,5 @@ export async function retrieve(input, {key, engine, fetcher = fetch, onExtractio
     result.extractionError = error instanceof ProxyError ? error.message : '整理结果格式无法读取。';
   }
   result.extractionMs = Date.now() - extractionStart;
-  return result;
+  return restoreFilmFacts(result, input);
 }

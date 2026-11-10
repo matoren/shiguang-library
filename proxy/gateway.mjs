@@ -1,4 +1,4 @@
-import {ProxyError, retrieve, validateQuery} from './zhipu.mjs';
+import {ProxyError, retrieve, validateQuery, restoreFilmFacts} from './zhipu.mjs';
 
 const MAX_BODY = 2048;
 const TTL = 7 * 86400000;
@@ -87,12 +87,13 @@ export function createGateway(env, store, {fetcher = fetch, now = Date.now} = {}
       if (path === '/v1/status' && request.method === 'GET') return json({ready: isReady(), usage: stats(stateAt(now()))});
       if (path !== '/v1/search' || request.method !== 'POST') throw new ProxyError('method', 405, '此接口不接受该请求方法。');
       if (!isReady()) throw new ProxyError('disabled', 503, 'GLM 搜索尚未在代理上启用。');
-      const input = validateQuery(await bodyJson(request));
+      const body = await bodyJson(request);
+      const input = validateQuery(body);
       const key = JSON.stringify([engine, input.kind, input.title.toLowerCase()]);
       const time = now();
       const state = stateAt(time);
       const cached = state.cache.find(row => row.key === key);
-      if (cached) return json({...cached.result, cached: true, usage: stats(state)});
+      if (cached && body.refresh !== true) return json({...restoreFilmFacts(cached.result, input), cached: true, usage: stats(state)});
       let job = inFlight.get(key);
       if (!job) {
         store.transaction(() => {

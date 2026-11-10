@@ -41,7 +41,7 @@ GLM 搜索来源提供文字证据和页面链接。封面继续由原结构化�
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ~~~
 
-4. 在 Worker 的 Variables and Secrets 确认两个项目都为 Secret。确认计费和额度后，把普通变量 GLM_ALLOW_SEARCH 改为 true 并部署该配置。若用命令重新部署仓库默认配置，需要重新打开这项开关。保持 GLM_ALLOWED_ORIGINS 指向使用该代理的应用来源，默认已填正式站点。
+4. 在 Worker 的 Variables and Secrets 确认两个项目都为 Secret。确认计费和额度后，把普通变量 GLM_ALLOW_SEARCH 设置为 true 并部署该配置。更新已有代理代码时，用 npx wrangler@4 deploy --keep-vars 保留控制台设置。保持 GLM_ALLOWED_ORIGINS 指向使用该代理的应用来源，默认已填正式站点。
 5. 打开应用的「我的 → 设置与数据 → GLM 联网搜索」。填 Worker 的 HTTPS 网址和代理访问口令，点击「连接并查看用量」，然后打开搜索开关。浏览器仅在当前页面会话内保留代理口令，刷新后需要重新连接。智谱 Key 始终只在服务端保存。
 
 应用的「连接并查看用量」只读代理状态。成功连接后，选择「GLM 联网搜索」并搜一个作品，核对智谱的搜索计费明细。若 Pro 权限不可用且账户支持 Std，可将代理的 GLM_SEARCH_ENGINE 改为 search_std 后再验证；也可立即使用结构化数据库和手动添加。
