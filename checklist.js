@@ -7,10 +7,13 @@ export function dimensionScore(state,options){
  if(selected.some(o=>(o.excludes||[]).some(id=>state.selected.includes(id))))throw Error('所选评价存在直接矛盾');
  return Math.round(Math.max(0,Math.min(10,6+selected.reduce((sum,o)=>sum+o.delta,0)))*10)/10;
 }
+export function createChecklist(banks,weights){
+ return {version:CHECKLIST_VERSION,banks:structuredClone(banks),dimensions:banks.map(()=>({status:'unrated',selected:[]})),weights:[...weights]};
+}
 export function beginChecklist(record,banks){
  const next=structuredClone(record);const keys=['scores','weights','computed','final','manual','adjusted','quick','mode','ruleVersion','checklist'];
  const hadInput=record.scores.some(v=>v!==null)||record.quick!==null||record.adjusted;next.ratingHistory=[...(next.ratingHistory||[]),...(hadInput?[{at:new Date().toISOString(),snapshot:Object.fromEntries(keys.filter(k=>Object.hasOwn(record,k)).map(k=>[k,structuredClone(record[k])]))}]:[])];
- next.checklist={version:CHECKLIST_VERSION,banks:structuredClone(banks),dimensions:banks.map(()=>({status:'unrated',selected:[]})),weights:[...record.weights]};
+ next.checklist=createChecklist(banks,record.weights);
  next.scores=banks.map(()=>null);next.computed=null;next.adjusted=false;next.manual=null;if(next.mode!=='quick')next.final=null;return next;
 }
 

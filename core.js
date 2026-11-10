@@ -1,4 +1,4 @@
-import {validateChecklist} from './checklist.js';
+import {validateChecklist,createChecklist,archiveSavedRating} from './checklist.js';
 export const CATEGORIES=['文学小说','散文随笔','哲学思想','专业学术','教材工具'];
 export const WEIGHTS=[[25,20,20,10,15,10],[20,25,25,5,15,10],[25,30,15,10,5,15],[30,20,15,15,5,15],[30,10,20,5,10,25]];
 export const MOVIE_WEIGHTS=[35,25,20,20];
@@ -20,12 +20,66 @@ export function calculate(scores,weights){let n=0,d=0;scores.forEach((s,i)=>{if(
 export const grade=s=>!validScore(s)?'未评分':s>=9?'非常优秀':s>=8?'值得反复体验':s>=7?'值得体验':s>=6?'达到合格水平':s>=5?'未达合格预期':s>=3?'质量较差':'严重缺陷';
 export const scoreText=s=>validScore(s)?`${s<7?'✳ ':''}${s.toFixed(1)}`:'未评分';
 export function finalScore(r){return r.mode==='quick'?r.quick:r.adjusted?r.manual:r.computed;}
+export const ratingMethod=r=>r.mode==='quick'?'quick':r.checklist?'checklist':'numeric';
+const standardKeys=['scores','weights','computed','adjusted','manual','ruleVersion','checklist'];
+function standardSnapshot(record){
+ const snapshot=Object.fromEntries(standardKeys.filter(key=>Object.hasOwn(record,key)).map(key=>[key,structuredClone(record[key])]));
+ snapshot.computed=calculate(snapshot.scores,snapshot.weights);
+ if(snapshot.manual!==null&&(!validScore(snapshot.manual)||Math.abs(snapshot.manual*10-Math.round(snapshot.manual*10))>1e-8)){
+  snapshot.manual=null;
+  snapshot.adjusted=false;
+ }
+ if(snapshot.manual===null)snapshot.adjusted=false;
+ return snapshot;
+}
+export function switchRatingMethod(record,method,banks,context){
+ if(method==='quick')return {...record,...standardSnapshot(record),mode:'quick',final:record.quick};
+ const standard=record.checklist?'checklist':'numeric';
+ if(method===standard)return {...record,mode:'standard',final:record.adjusted?record.manual:record.computed};
+ const next=structuredClone(record);
+ const saved=next.standardAlternate?.context===context?next.standardAlternate.rating:null;
+ next.standardAlternate={context,rating:standardSnapshot(record)};
+ delete next.checklist;
+ if(saved)Object.assign(next,saved);
+ else{
+  next.scores=record.scores.map(()=>null);
+  next.computed=null;
+  next.adjusted=false;
+  next.manual=null;
+  if(method==='checklist')next.checklist={...createChecklist(banks,next.weights),context};
+ }
+ next.mode='standard';
+ next.final=finalScore(next);
+ return next;
+}
+export function archiveAlternateRating(record){
+ if(!record.standardAlternate)return record;
+ const {standardAlternate,...next}=record;
+ if(!standardAlternate.rating.scores.some(score=>score!==null)&&!standardAlternate.rating.adjusted)return next;
+ const {checklist,...previous}=next;
+ const standard={...previous,...standardAlternate.rating,mode:'standard'};
+ standard.final=finalScore(standard);
+ return archiveSavedRating(next,standard);
+}
+function validateAlternateRating(record){
+ const alt=record.standardAlternate;
+ if(alt===undefined)return;
+ const context=record.type==='book'?'book:'+record.category:record.type==='movie'?'movie:'+screenKind(record):'game';
+ const r=alt?.rating;
+ assert(alt?.context===context&&r&&Array.isArray(r.scores)&&r.scores.length===record.scores.length&&Boolean(r.checklist)!==Boolean(record.checklist),'备用评分方式不正确');
+ checkWeights(r.weights,record.scores.length);
+ validateChecklist({scores:r.scores,weights:r.weights,checklist:r.checklist});
+ assert(r.scores.every(s=>s===null||validScore(s)&&(r.checklist?Math.abs(s*10-Math.round(s*10))<1e-8:Number.isInteger(s*2))),'备用评分维度不正确');
+ assert(r.computed===calculate(r.scores,r.weights)&&Number.isInteger(r.ruleVersion)&&r.ruleVersion>0&&typeof r.adjusted==='boolean'&&
+   (r.manual===null&&!r.adjusted||validScore(r.manual)&&Math.abs(r.manual*10-Math.round(r.manual*10))<1e-8),'备用评分数据不正确');
+}
+
 export const defaults=()=>({theme:'light',weights:WEIGHTS.map(w=>[...w]),ruleVersion:1,lastBackup:null});
 export function ranked(records,type,category='',year='',kind=''){return records.filter(r=>matchesScreen(r,kind)&&r.type===type&&isDone(r)&&validScore(r.final)&&(!category||r.category===category)&&(!year||r.date?.startsWith(year))).sort((a,b)=>b.final-a.final||a.created.localeCompare(b.created)||a.id.localeCompare(b.id));}
 export function stats(records,type,year,kind=''){const done=records.filter(r=>matchesScreen(r,kind)&&r.type===type&&isDone(r));const rated=done.filter(r=>validScore(r.final));return {count:done.length,average:rated.length?(rated.reduce((s,r)=>s+r.final,0)/rated.length).toFixed(1):'—',year:done.filter(r=>r.date?.startsWith(String(year))).length};}
 function assert(ok,msg){if(!ok)throw Error(msg);}
 function checkWeights(w,n){assert(Array.isArray(w)&&w.length===n&&w.every(x=>Number.isInteger(x)&&x>=0&&x<=100)&&w.reduce((a,b)=>a+b,0)===100,'评分权重不合法');}
-export function validateBackup(data){assert(data&&data.format==='private-media-library'&&data.schemaVersion===1,'不支持的备份格式或版本');assert(Array.isArray(data.records)&&data.records.length<=50000,'记录格式不正确');assert(data.settings&&['light','dark'].includes(data.settings.theme),'设置格式不正确');assert(Array.isArray(data.settings.weights)&&data.settings.weights.length===5,'分类权重不正确');data.settings.weights.forEach(w=>checkWeights(w,6));assert(Number.isInteger(data.settings.ruleVersion)&&data.settings.ruleVersion>0,'规则版本不正确');assert(data.settings.lastBackup===null||(typeof data.settings.lastBackup==='string'&&!Number.isNaN(Date.parse(data.settings.lastBackup))),'上次备份日期不正确');const ids=new Set();for(const r of data.records){assert(r&&typeof r.id==='string'&&r.id.length>0&&!ids.has(r.id),'记录 ID 缺失或重复');ids.add(r.id);assert(TYPES.includes(r.type)&&typeof r.title==='string'&&r.title.trim().length>0&&r.title.length<=300,'作品名称或类型不正确');assert(typeof r.creator==='string'&&typeof r.category==='string'&&Array.isArray(r.tags)&&r.tags.every(t=>typeof t==='string'),'作品信息不完整');assert(['standard','quick'].includes(r.mode)&&!(r.type==='book'&&r.mode==='quick'),'评分模式不正确');assert(r.type!=='movie'||r.screenType===undefined||['film','series'].includes(r.screenType),'电影或剧集类型不正确');assert(STATUSES[r.type].includes(r.status),'作品状态不正确');assert(r.type!=='book'||CATEGORIES.includes(r.category),'书籍分类不正确');validateChecklist(r);checkWeights(r.weights,r.type==='book'?6:4);assert(Array.isArray(r.scores)&&r.scores.length===r.weights.length&&r.scores.every(s=>s===null||(validScore(s)&&(r.checklist?Math.abs(s*10-Math.round(s*10))<1e-8:Number.isInteger(s*2)))),'维度评分不正确');for(const k of ['computed','final','manual','quick'])assert(r[k]===null||(validScore(r[k])&&Math.abs(r[k]*10-Math.round(r[k]*10))<1e-8),'总评分不正确');assert(typeof r.adjusted==='boolean'&&r.computed===calculate(r.scores,r.weights)&&r.final===finalScore(r),'评分数据不一致');assert(!r.adjusted||validScore(r.manual),'缺少手动最终分');assert(typeof r.comment==='string'&&r.comment.length<=20000&&typeof r.created==='string'&&!Number.isNaN(Date.parse(r.created))&&typeof r.updated==='string'&&!Number.isNaN(Date.parse(r.updated)),'日期或评论格式不正确');assert(typeof r.date==='string'&&(!r.date||/^\d{4}-\d{2}-\d{2}$/.test(r.date)),'完成日期不正确');assert(r.releaseDate===undefined||r.releaseDate===''||validReleaseDate(r.releaseDate),'上映日期不正确');for(const k of ['cover','thumb'])assert(r[k]===null||(typeof r[k]==='string'&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(r[k])&&r[k].length<12000000),'封面图片不正确');}return structuredClone(data);}
+export function validateBackup(data){assert(data&&data.format==='private-media-library'&&data.schemaVersion===1,'不支持的备份格式或版本');assert(Array.isArray(data.records)&&data.records.length<=50000,'记录格式不正确');assert(data.settings&&['light','dark'].includes(data.settings.theme),'设置格式不正确');assert(Array.isArray(data.settings.weights)&&data.settings.weights.length===5,'分类权重不正确');data.settings.weights.forEach(w=>checkWeights(w,6));assert(Number.isInteger(data.settings.ruleVersion)&&data.settings.ruleVersion>0,'规则版本不正确');assert(data.settings.lastBackup===null||(typeof data.settings.lastBackup==='string'&&!Number.isNaN(Date.parse(data.settings.lastBackup))),'上次备份日期不正确');const ids=new Set();for(const r of data.records){assert(r&&typeof r.id==='string'&&r.id.length>0&&!ids.has(r.id),'记录 ID 缺失或重复');ids.add(r.id);assert(TYPES.includes(r.type)&&typeof r.title==='string'&&r.title.trim().length>0&&r.title.length<=300,'作品名称或类型不正确');assert(typeof r.creator==='string'&&typeof r.category==='string'&&Array.isArray(r.tags)&&r.tags.every(t=>typeof t==='string'),'作品信息不完整');assert(['standard','quick'].includes(r.mode)&&!(r.type==='book'&&r.mode==='quick'),'评分模式不正确');assert(r.type!=='movie'||r.screenType===undefined||['film','series'].includes(r.screenType),'电影或剧集类型不正确');assert(STATUSES[r.type].includes(r.status),'作品状态不正确');assert(r.type!=='book'||CATEGORIES.includes(r.category),'书籍分类不正确');validateChecklist(r);checkWeights(r.weights,r.type==='book'?6:4);assert(Array.isArray(r.scores)&&r.scores.length===r.weights.length&&r.scores.every(s=>s===null||(validScore(s)&&(r.checklist?Math.abs(s*10-Math.round(s*10))<1e-8:Number.isInteger(s*2)))),'维度评分不正确');for(const k of ['computed','final','manual','quick'])assert(r[k]===null||(validScore(r[k])&&Math.abs(r[k]*10-Math.round(r[k]*10))<1e-8),'总评分不正确');assert(typeof r.adjusted==='boolean'&&r.computed===calculate(r.scores,r.weights)&&r.final===finalScore(r),'评分数据不一致');assert(!r.adjusted||validScore(r.manual),'缺少手动最终分');assert(typeof r.comment==='string'&&r.comment.length<=20000&&typeof r.created==='string'&&!Number.isNaN(Date.parse(r.created))&&typeof r.updated==='string'&&!Number.isNaN(Date.parse(r.updated)),'日期或评论格式不正确');assert(typeof r.date==='string'&&(!r.date||/^\d{4}-\d{2}-\d{2}$/.test(r.date)),'完成日期不正确');validateAlternateRating(r);assert(r.releaseDate===undefined||r.releaseDate===''||validReleaseDate(r.releaseDate),'上映日期不正确');for(const k of ['cover','thumb'])assert(r[k]===null||(typeof r[k]==='string'&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(r[k])&&r[k].length<12000000),'封面图片不正确');}return structuredClone(data);}
 export function backup(records,settings){return {format:'private-media-library',schemaVersion:1,exportedAt:new Date().toISOString(),records,settings};}
 const identity=r=>[r.type,r.type==='movie'?screenKind(r):'',r.title.trim().toLocaleLowerCase(),r.type==='book'?r.creator.trim().toLocaleLowerCase():'',r.type==='book'?'':String(r.year||'')].join('|');
 export function mergeRecords(current,incoming){const out=[...current],conflicts=[];for(const r of incoming){const found=out.find(x=>x.id===r.id||identity(x)===identity(r));if(found)conflicts.push({existing:found,incoming:r});else out.push(r);}return {records:out,conflicts};}
