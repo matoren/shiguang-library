@@ -40,7 +40,7 @@ export function switchRatingMethod(record,method,banks,context){
  const saved=next.standardAlternate?.context===context?next.standardAlternate.rating:null;
  next.standardAlternate={context,rating:standardSnapshot(record)};
  delete next.checklist;
- if(saved)Object.assign(next,saved);
+ if(saved)Object.assign(next,standardSnapshot(saved));
  else{
   next.scores=record.scores.map(()=>null);
   next.computed=null;
@@ -57,7 +57,7 @@ export function archiveAlternateRating(record){
  const {standardAlternate,...next}=record;
  if(!standardAlternate.rating.scores.some(score=>score!==null)&&!standardAlternate.rating.adjusted)return next;
  const {checklist,...previous}=next;
- const standard={...previous,...standardAlternate.rating,mode:'standard'};
+ const standard={...previous,...standardSnapshot(standardAlternate.rating),mode:'standard'};
  standard.final=finalScore(standard);
  return archiveSavedRating(next,standard);
 }
@@ -70,7 +70,7 @@ function validateAlternateRating(record){
  checkWeights(r.weights,record.scores.length);
  validateChecklist({scores:r.scores,weights:r.weights,checklist:r.checklist});
  assert(r.scores.every(s=>s===null||validScore(s)&&(r.checklist?Math.abs(s*10-Math.round(s*10))<1e-8:Number.isInteger(s*2))),'备用评分维度不正确');
- assert(r.computed===calculate(r.scores,r.weights)&&Number.isInteger(r.ruleVersion)&&r.ruleVersion>0&&typeof r.adjusted==='boolean'&&
+ assert(r.computed===calculate(r.scores,r.weights)&&(r.ruleVersion===undefined||Number.isInteger(r.ruleVersion)&&r.ruleVersion>0)&&typeof r.adjusted==='boolean'&&
    (r.manual===null&&!r.adjusted||validScore(r.manual)&&Math.abs(r.manual*10-Math.round(r.manual*10))<1e-8),'备用评分数据不正确');
 }
 
