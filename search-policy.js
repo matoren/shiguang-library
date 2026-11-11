@@ -8,11 +8,12 @@ export function externalSearches(type,title,kind='film'){
  const q=title.trim().slice(0,150),hint=type==='book'?'书籍 作者':type==='game'?'游戏 开发商':kind==='series'?'电视剧 主创':'电影 导演';
  return [{label:'在百度搜索',url:'https://www.baidu.com/s?'+new URLSearchParams({wd:q+' '+hint})},{label:'在百度百科搜索',url:'https://baike.baidu.com/search/word?'+new URLSearchParams({word:q})},{label:'在豆瓣搜索',url:'https://www.douban.com/search?'+new URLSearchParams({q:q+' '+(type==='book'?'书籍':type==='game'?'游戏':kind==='series'?'剧集':'电影')})}];
 }
-export function posterSearchUrl(title, kind, release) {
+export function coverSearchUrl(title, type, kind, release) {
  const name = title.trim();
  if (!name) return '';
  const year = release.match(/^\d{4}(?:-|$)/)?.[0].slice(0,4) || '';
- const query = [name, year, kind==='series'?'剧集':'电影', '官方海报'].filter(Boolean).join(' ');
+ const category = type==='book'?'书籍 封面':type==='game'?'游戏 封面':(kind==='series'?'剧集':'电影')+' 官方海报';
+ const query = [name, type==='book'?'':year, category].filter(Boolean).join(' ');
  return 'https://image.baidu.com/search/index?' + new URLSearchParams({tn:'baiduimage', word:query});
 }
 export const filmTitleKey=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
