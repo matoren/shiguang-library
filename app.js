@@ -166,9 +166,10 @@ function glmPreferences(){
  const state=glmSettings();
  return `<section class="panel"><h2>GLM 联网搜索</h2><label class="check"><input id="glm-enabled" type="checkbox" ${state.enabled?'checked':''}> 启用 GLM 联网搜索</label><p class="muted">连接代理后，综合搜索会向智谱发送作品名称与类别。智谱按搜索次数计费。</p><label>代理网址<input id="glm-endpoint" type="url" value="${esc(state.endpoint)}" placeholder="https://你的代理.workers.dev"></label><label>代理访问口令<input id="glm-token" type="password" autocomplete="off" spellcheck="false" placeholder="刷新后需重新连接"></label><div class="actions"><button type="button" id="glm-connect">连接并查看用量</button><button type="button" id="glm-disconnect">断开</button></div><p id="glm-status" role="status">${esc(glmUsageText(state.usage))}</p><p class="muted">智谱 API Key 在代理的密钥管理中配置。此处填写单独生成的代理访问口令。</p></section>`;
 }
+function usageCount(count, limit){return limit===null?String(count):count+'/'+limit;}
 function glmUsageText(usage){
  if(!usage)return '代理尚未连接。';
- return `已连接 · 今日 ${usage.today}/${usage.dailyLimit} 次 · 本月 ${usage.month}/${usage.monthlyLimit} 次 · 累计搜索 ${usage.searches} 次 · 整理 ${usage.extractions} 次 · 失败 ${usage.failures} 次 · 本月搜索估算 ¥${Number(usage.estimatedSearchYuan||0).toFixed(2)}。`;
+ return `已连接 · 今日 ${usageCount(usage.today,usage.dailyLimit)} 次 · 本月 ${usageCount(usage.month,usage.monthlyLimit)} 次${usage.monthlyLimit===null?'（无应用上限）':''} · 累计搜索 ${usage.searches} 次 · 整理 ${usage.extractions} 次 · 失败 ${usage.failures} 次 · 本月搜索估算 ¥${Number(usage.estimatedSearchYuan||0).toFixed(2)}。`;
 }
 function bindGlmPreferences(){
  $('#glm-enabled').onchange=e=>setGlmEnabled(e.target.checked);
@@ -188,7 +189,7 @@ function lookupProviderOptions(scope='general'){
 }
 function renderGlmPages(result){
  const target=$('#lookup-glm-pages');
- const usage=result.usage?` · 今日 ${result.usage.today}/${result.usage.dailyLimit} 次`:'';
+ const usage=result.usage?` · 今日 ${usageCount(result.usage.today,result.usage.dailyLimit)} 次`:'';
  const caption=`GLM 网页 ${result.pages.length} 条（返回 ${result.returnedCount} 条）${result.cached?' · 代理缓存':''}${usage}`;
  if(draft.type==='movie'&&screenKind(draft)==='film'){
   target.innerHTML=result.pages.length?`<details class="source-info"><summary>核对网页来源${result.cached?'（上次结果）':''}</summary>${result.pages.map(page=>`<p>${glmLink(page.url,page.title)}</p>`).join('')}</details>`:'';

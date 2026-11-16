@@ -9,6 +9,7 @@ GLM_ALLOWED_ORIGINS = "https://matoren.github.io"
 GLM_SEARCH_ENGINE = "search_pro"
 GLM_DAILY_LIMIT = "6"
 GLM_MONTHLY_LIMIT = "30"
+GLM_UNLIMITED_SEARCH = "true"
 
 [observability]
 enabled = false

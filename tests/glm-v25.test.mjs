@@ -187,3 +187,21 @@ test('Cloudflare-compatible manual redirect never forwards the provider key', as
   }), {code:'glm-redirect'});
   assert.equal(calls,1);
 });
+
+test('云代理取消每日和每月上限后仍鉴权、限频并记录费用', async () => {
+  let time = Date.parse('2026-11-16T01:00:00Z');
+  const gateway = createGateway({...env,GLM_UNLIMITED_SEARCH:'true',GLM_DAILY_LIMIT:'1',GLM_MONTHLY_LIMIT:'1'},
+    fixtureStore(),{now:()=>time,fetcher:async()=>Response.json({search_result:[]})});
+  assert.equal((await gateway(request('film','第一个',{Authorization:'Bearer invalid'}))).status,401);
+  assert.equal((await gateway(request('film','第一个'))).status,200);
+  assert.equal((await gateway(request('film','第二个'))).status,429);
+  time+=5100;
+  const result=await gateway(request('film','第二个'));
+  assert.equal(result.status,200);
+  const {usage}=await result.json();
+  assert.equal(usage.today,2);
+  assert.equal(usage.month,2);
+  assert.equal(usage.dailyLimit,null);
+  assert.equal(usage.monthlyLimit,null);
+  assert.equal(usage.estimatedSearchYuan,0.06);
+});

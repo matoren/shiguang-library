@@ -50,11 +50,12 @@ async function authorized(request, secret) {
 export function createGateway(env, store, {fetcher = fetch, now = Date.now} = {}) {
   const allowed = new Set((env.GLM_ALLOWED_ORIGINS || 'https://matoren.github.io').split(',').map(x => x.trim()));
   const engine = env.GLM_SEARCH_ENGINE || 'search_pro';
-  const dailyLimit = count(env.GLM_DAILY_LIMIT, 6);
-  const monthlyLimit = count(env.GLM_MONTHLY_LIMIT, 30);
+  const unlimited = env.GLM_UNLIMITED_SEARCH === 'true';
+  const dailyLimit = unlimited ? null : count(env.GLM_DAILY_LIMIT, 6);
+  const monthlyLimit = unlimited ? null : count(env.GLM_MONTHLY_LIMIT, 30);
   const inFlight = new Map();
   const isReady = () => env.GLM_ALLOW_SEARCH === 'true' && Boolean(env.ZHIPU_API_KEY) &&
-    ['search_pro', 'search_std'].includes(engine) && dailyLimit > 0 && monthlyLimit > 0;
+    ['search_pro', 'search_std'].includes(engine) && (unlimited || dailyLimit > 0 && monthlyLimit > 0);
   function stateAt(time) {
     const state = store.get() || blank();
     const day = PERIOD_FORMAT.format(new Date(time));
@@ -98,7 +99,9 @@ export function createGateway(env, store, {fetcher = fetch, now = Date.now} = {}
       if (!job) {
         store.transaction(() => {
           const current = stateAt(time);
-          if (current.daily >= dailyLimit || current.monthly >= monthlyLimit) throw new ProxyError('budget', 429, '已达到代理设置的搜索次数上限。');
+          if (!unlimited && (current.daily >= dailyLimit || current.monthly >= monthlyLimit)) {
+            throw new ProxyError('budget', 429, '已达到代理设置的搜索次数上限。');
+          }
           if (inFlight.size || current.activeUntil > time || current.last && time - current.last < 5000) {
             throw new ProxyError('rate-limit', 429, '代理正在处理搜索或刚发起过搜索，请稍后再试。');
           }
