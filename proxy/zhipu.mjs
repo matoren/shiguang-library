@@ -209,7 +209,12 @@ async function post(endpoint, payload, key, fetcher, timeout) {
     const data = await response.json().catch(() => null);
     if (String(data?.error?.code) === '1113') throw new ProxyError('glm-balance', 402, '智谱账户余额或资源额度不足，请查看控制台。');
     if ([401, 403].includes(response.status)) throw new ProxyError('glm-auth', 502, '智谱拒绝授权，请核对标准 API 密钥与服务权限。');
-    if (response.status === 429) throw new ProxyError('glm-rate', 429, '智谱接口限流，请稍后再试。');
+    if (response.status === 429) {
+      const stage=endpoint==='/web_search'?'网页检索':'字段整理';
+      const code=String(data?.error?.code || '').match(/^\d{4}$/)?.[0];
+      const reason=code==='1302'?'账户请求频率超限':code==='1305'?'当前服务繁忙':code==='1308'||code==='1310'?'账户用量达到上限':'接口限流';
+      throw new ProxyError('glm-rate',429,'智谱'+stage+'：'+reason+(code?'（'+code+'）':'')+'，请稍后再试。');
+    }
     if (!response.ok || !data || data.error) throw new ProxyError('glm-upstream', 502, '智谱接口未完成请求，请检查平台用量或服务状态。');
     return data;
   } catch (error) {
@@ -247,6 +252,7 @@ export async function retrieve(input, {key, engine, fetcher = fetch, onExtractio
   } catch (error) {
     if (!(error instanceof ProxyError) && !(error instanceof SyntaxError)) throw error;
     result.extractionError = error instanceof ProxyError ? error.message : '整理结果格式无法读取。';
+    result.extractionErrorCode = error instanceof ProxyError ? error.code : 'format';
   }
   result.extractionMs = Date.now() - extractionStart;
   return restoreFilmFacts(result, input);

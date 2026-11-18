@@ -93,7 +93,7 @@ export function createGateway(env, store, {fetcher = fetch, now = Date.now} = {}
       const key = JSON.stringify([engine, input.kind, input.title.toLowerCase()]);
       const time = now();
       const state = stateAt(time);
-      const cached = state.cache.find(row => row.key === key);
+      const cached = state.cache.find(row => row.key === key && row.result.extractionErrorCode!=='glm-rate' && !/限流|繁忙/.test(row.result.extractionError||''));
       if (cached && body.refresh !== true) return json({...restoreFilmFacts(cached.result, input), cached: true, usage: stats(state)});
       let job = inFlight.get(key);
       if (!job) {
@@ -124,7 +124,7 @@ export function createGateway(env, store, {fetcher = fetch, now = Date.now} = {}
           update(s => {
             if (s.last === time) s.activeUntil = 0;
             if (result.extractionError) s.failures++;
-            const ttl = result.extractionError || !result.items.length ? 3600000 : TTL;
+            const ttl = result.extractionErrorCode==='glm-rate' ? 0 : result.extractionError || !result.items.length ? 3600000 : TTL;
             s.cache = [{key, expires: now() + ttl, result}, ...s.cache].slice(0, 24);
           });
           return result;

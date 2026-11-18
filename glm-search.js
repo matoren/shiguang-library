@@ -5,15 +5,18 @@ const LABEL = 'GLM 联网搜索';
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 let connection = null;
 let pendingConnection = 0;
+let rememberedToken = '';
+let restoreTask = null;
 let preference = {enabled: false, endpoint: ''};
 
 try {
   const saved = JSON.parse(globalThis.localStorage?.getItem(SETTINGS_KEY) || '{}');
   preference = {enabled: saved.enabled === true, endpoint: typeof saved.endpoint === 'string' ? saved.endpoint : ''};
+  if (TOKEN.test(saved.token || '')) rememberedToken = saved.token;
 } catch { /* The app also works with browser storage disabled. */ }
 
 export function glmSettings() {
-  return {...preference, connected: Boolean(connection), usage: connection?.usage};
+  return {...preference, remembered: Boolean(rememberedToken), connected: Boolean(connection), usage: connection?.usage};
 }
 
 export function setGlmEnabled(enabled) {
@@ -22,7 +25,7 @@ export function setGlmEnabled(enabled) {
 }
 
 function savePreference() {
-  try { globalThis.localStorage?.setItem(SETTINGS_KEY, JSON.stringify(preference)); } catch {}
+  try { globalThis.localStorage?.setItem(SETTINGS_KEY, JSON.stringify({...preference, ...(rememberedToken ? {token: rememberedToken} : {})})); } catch {}
 }
 
 export function proxyEndpoint(value, origin = globalThis.location?.origin) {
@@ -62,7 +65,7 @@ async function proxyRequest(session, path, {body, signal, fetcher = fetch} = {})
   return data;
 }
 
-export async function connectGlm(value, token) {
+export async function connectGlm(value, token, remember = false) {
   const attempt = ++pendingConnection;
   const session = {endpoint: proxyEndpoint(value), token: token.trim()};
   if (!TOKEN.test(session.token)) throw Error('请填写代理访问口令（43 位）。');
@@ -71,15 +74,33 @@ export async function connectGlm(value, token) {
   if (!status.ready) throw Error('已验证代理口令。请先在服务端配置智谱密钥并启用搜索。');
   connection = {...session, usage: status.usage};
   preference.endpoint = session.endpoint;
+  rememberedToken = remember ? session.token : '';
   savePreference();
 }
 
 export function disconnectGlm() {
   ++pendingConnection;
   connection = null;
+  rememberedToken = '';
+  savePreference();
+}
+
+export async function restoreGlm(){
+  if(connection || !rememberedToken)return;
+  if(!restoreTask){
+    const token=rememberedToken;
+    restoreTask=connectGlm(preference.endpoint,token,true).catch(error=>{
+      if(error.code==='proxy-auth'){
+        rememberedToken='';savePreference();
+      }
+      throw error;
+    }).finally(()=>{restoreTask=null;});
+  }
+  return restoreTask;
 }
 
 export async function searchGlm(type, title, {kind, scope, signal, refresh}) {
+  if(preference.enabled && !connection)await restoreGlm();
   if (!preference.enabled || !connection) throw Error('请先在“设置与数据”启用 GLM 搜索并连接代理。');
   const session = connection;
   const media = type === 'movie' ? kind === 'series' ? 'series' : 'film'

@@ -1,4 +1,4 @@
-import {glmSettings,setGlmEnabled,connectGlm,disconnectGlm,searchLibrary} from './glm-search.js';
+import {glmSettings,setGlmEnabled,connectGlm,disconnectGlm,restoreGlm,searchLibrary} from './glm-search.js';
 import {optionsFor,bankKey,ratingOptionLabel} from './rating-options.js';
 import {dimensionScore,beginChecklist,archiveSavedRating} from './checklist.js';
 import {CATEGORIES,WEIGHTS,MOVIE_WEIGHTS,GAME_WEIGHTS,BOOK_DIMS,MOVIE_DIMS,GAME_DIMS,TYPES,TYPE_LABELS,STATUSES,isDone,dimensions,featured,applyCandidate,DEFINITIONS,validScore,calculate,grade,scoreText,finalScore,defaults,ranked,stats,backup,validateBackup,mergeRecords} from './core.js';
@@ -145,6 +145,8 @@ editor.addEventListener('cancel',async e=>{e.preventDefault();if(!busy&&(!dirty|
 try{db=await openDB();const saved=await readAll(db);records=saved.records;settings=saved.settings||defaults();document.documentElement.dataset.theme=settings.theme;navigate();if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').then(reg=>{if(reg.waiting)toast('有新版本，可在我的 → 设置与数据中更新');reg.addEventListener('updatefound',()=>{const w=reg.installing;w?.addEventListener('statechange',()=>{if(w.state==='installed')toast(navigator.serviceWorker.controller?'新版本已准备好，请到我的 → 设置与数据更新':'离线缓存已就绪');});});}).catch(()=>toast('离线缓存尚未就绪，请联网后重试'));navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!editor.open)location.reload();else toast('更新已生效，请保存后刷新页面');});}}catch(e){main.innerHTML=`<section class="panel"><h1>暂时无法打开本地存储</h1><p>${esc(e.message)}</p><p>请使用普通浏览模式，并允许此网站存储数据。当前不会使用临时存储替代。</p></section>`;}
 
 
+if(glmSettings().enabled&&glmSettings().remembered)restoreGlm().catch(()=>{});
+
 function myPage(){return `${heading('','我的','排行榜、数据备份与偏好设置。')}<a class="my-feature" href="#rank"><span class="my-feature-icon">${icon('rank')}</span><div><h2>排行榜</h2><p>回顾书籍、电影/剧集和游戏里的高分作品</p></div>${icon('arrow')}</a><div class="my-links"><a class="panel" href="#settings">${icon('settings')}<div><h3>设置与数据</h3><p>完整备份、恢复、评分权重与外观</p></div>${icon('arrow')}</a><a class="panel" href="#stats">${icon('grid')}<div><h3>收藏统计</h3><p>分类、评分分布与年度完成数量</p></div>${icon('arrow')}</a><a class="panel" href="#all">${icon('book')}<div><h3>全部收藏</h3><p>一起浏览书籍、电影/剧集和游戏</p></div>${icon('arrow')}</a></div><p class="notice">数据仅保存在此浏览器。清除网站数据、设备故障或卸载可能导致丢失，建议定期导出包含封面的完整备份。</p>`;}
 function chooseType(){const d=$('#picker');d.innerHTML=`<div class="dialog-heading"><h2>添加作品</h2><button data-close="picker" aria-label="关闭">${icon('close')}</button></div><div class="type-choices">${TYPES.map(t=>`<button data-new="${t}">${icon(t)}<b>${TYPE_LABELS[t]}</b></button>`).join('')}</div>`;d.showModal();}
 function sourceInfo(r){const entries=[['资料来源',r.source],['封面来源',r.coverSource]].filter(e=>e[1]);if(!entries.length)return '';return `<details class="source-info"><summary>资料与封面来源</summary>${entries.map(([title,s])=>`<p><b>${title}</b> · ${esc(s.provider||'公开资料')} ${/^https:\/\//.test(s.url||'')?`<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">查看原始来源</a>`:''}<br>${esc(s.artist||'')} ${esc(s.license||'')}${s.note?'<br>'+esc(s.note):''}${/^https:\/\//.test(s.licenseUrl||'')?` · <a href="${esc(s.licenseUrl)}" target="_blank" rel="noopener noreferrer">许可</a>`:''}</p>${renderFieldEvidence(s)}`).join('')}</details>`;}
@@ -164,7 +166,7 @@ function renderFieldEvidence(source){
 }
 function glmPreferences(){
  const state=glmSettings();
- return `<section class="panel"><h2>GLM 联网搜索</h2><label class="check"><input id="glm-enabled" type="checkbox" ${state.enabled?'checked':''}> 启用 GLM 联网搜索</label><p class="muted">连接代理后，综合搜索会向智谱发送作品名称与类别。智谱按搜索次数计费。</p><label>代理网址<input id="glm-endpoint" type="url" value="${esc(state.endpoint)}" placeholder="https://你的代理.workers.dev"></label><label>代理访问口令<input id="glm-token" type="password" autocomplete="off" spellcheck="false" placeholder="刷新后需重新连接"></label><div class="actions"><button type="button" id="glm-connect">连接并查看用量</button><button type="button" id="glm-disconnect">断开</button></div><p id="glm-status" role="status">${esc(glmUsageText(state.usage))}</p><p class="muted">智谱 API Key 在代理的密钥管理中配置。此处填写单独生成的代理访问口令。</p></section>`;
+ return `<section class="panel"><h2>GLM 联网搜索</h2><label class="check"><input id="glm-enabled" type="checkbox" ${state.enabled?'checked':''}> 启用 GLM 联网搜索</label><p class="muted">连接代理后，综合搜索会向智谱发送作品名称与类别。智谱按搜索次数计费。</p><label>代理网址<input id="glm-endpoint" type="url" value="${esc(state.endpoint)}" placeholder="https://你的代理.workers.dev"></label><label>代理访问口令<input id="glm-token" type="password" autocomplete="off" spellcheck="false" placeholder="输入代理访问口令"></label><label class="check"><input id="glm-remember" type="checkbox" checked>在此设备记住口令并自动连接</label><div class="actions"><button type="button" id="glm-connect">连接并查看用量</button><button type="button" id="glm-disconnect">断开并忘记口令</button></div><p id="glm-status" role="status">${esc(glmUsageText(state.usage))}</p><p class="muted">智谱 API Key 在代理的密钥管理中配置。此处填写单独生成的代理访问口令。</p></section>`;
 }
 function usageCount(count, limit){return limit===null?String(count):count+'/'+limit;}
 function glmUsageText(usage){
@@ -175,15 +177,19 @@ function bindGlmPreferences(){
  $('#glm-enabled').onchange=e=>setGlmEnabled(e.target.checked);
  const status=$('#glm-status'),button=$('#glm-connect'),token=$('#glm-token');
  button.onclick=async()=>{
-  const value=token.value;token.value='';button.disabled=true;status.textContent='正在验证代理…';
-  try{await connectGlm($('#glm-endpoint').value,value);status.textContent=glmUsageText(glmSettings().usage);}
+  const value=token.value;const remember=$('#glm-remember').checked;token.value='';button.disabled=true;status.textContent='正在验证代理…';
+  try{await connectGlm($('#glm-endpoint').value,value,remember);status.textContent=glmUsageText(glmSettings().usage);}
   catch(error){status.textContent=error.message;}finally{button.disabled=false;}
  };
+ if(glmSettings().remembered&&!glmSettings().connected){
+  status.textContent='正在自动连接…';
+  restoreGlm().then(()=>{status.textContent=glmUsageText(glmSettings().usage);}).catch(error=>{status.textContent=error.message;});
+ }
  $('#glm-disconnect').onclick=()=>{disconnectGlm();token.value='';status.textContent=glmUsageText();};
 }
 function lookupProviderOptions(scope='general'){
  const state=glmSettings();
- const choices=[['auto',state.enabled&&state.connected?'综合搜索（含 GLM）':'综合搜索'],['structured','结构化数据库'],['glm','GLM 联网搜索']];
+ const choices=[['auto',state.enabled&&(state.connected||state.remembered)?'综合搜索（含 GLM）':'综合搜索'],['structured','结构化数据库'],['glm','GLM 联网搜索']];
  for(const key of sourceOptions(draft.type,screenKind(draft),scope))choices.push([key,SOURCES[key].label]);
  return choices.map(([key,label])=>`<option value="${key}">${esc(label)}</option>`).join('');
 }
@@ -241,7 +247,7 @@ async function runLookup(e){
  e.preventDefault();if(busy)return;lookupController?.abort();lookupController=new AbortController();const signal=lookupController.signal,f=new FormData(e.target),button=$('#lookup-submit');button.disabled=true;$('#lookup-stop').hidden=false;$('#lookup-status').textContent='开始检索；你可以随时停止或继续手动填写。';$('#lookup-attempts').innerHTML='';$('#lookup-results').innerHTML='';$('#lookup-glm-pages').innerHTML='';lookupResults=[];lookupLinks();
  const progress=new Map();const showProgress=a=>{progress.set(a.source,a);$('#lookup-attempts').innerHTML=[...progress.values()].map(x=>`<li class="${x.state==='error'?'source-error':''}"><b>${esc(SOURCES[x.source]?.label||({glm:'GLM 联网搜索',structured:'结构化数据库',network:'网络'}[x.source])||'本机缓存')}</b> · ${esc(x.state==='loading'?'正在查询…':x.state==='cached'?'读取上次成功的候选':x.state==='success'?`找到 ${x.count} 个候选`:x.state==='empty'?'请求成功，但当前类型无匹配结果':x.message)}${x.cached?'（复用上次结果）':''}${x.ms!==undefined?`（${(x.ms/1000).toFixed(1)}秒）`:''}</li>`).join('');};
  try{
-  const result=await searchLibrary(draft.type,String(f.get('query')),{provider:String(f.get('provider')),signal,kind:screenKind(draft),scope:String(f.get('scope')||'general'),refresh:f.has('refresh'),includeGlm:glmSettings().enabled&&glmSettings().connected,onGlm:renderGlmPages,onProgress:showProgress,onResults:items=>{if(!signal.aborted){renderLookupItems(items);$('#lookup-status').textContent='已有 '+items.length+' 个候选；其他来源继续查询，可以直接选择。';}}});if(signal.aborted)return;lookupResults=result.items;
+  const result=await searchLibrary(draft.type,String(f.get('query')),{provider:String(f.get('provider')),signal,kind:screenKind(draft),scope:String(f.get('scope')||'general'),refresh:f.has('refresh'),includeGlm:glmSettings().enabled&&(glmSettings().connected||glmSettings().remembered),onGlm:renderGlmPages,onProgress:showProgress,onResults:items=>{if(!signal.aborted){renderLookupItems(items);$('#lookup-status').textContent='已有 '+items.length+' 个候选；其他来源继续查询，可以直接选择。';}}});if(signal.aborted)return;lookupResults=result.items;
   const failed=result.attempts.some(a=>a.state==='error');$('#lookup-status').textContent=result.items.length?(result.fromCache?`显示 ${new Date(result.cachedAt).toLocaleString('zh-CN')} 本机缓存的 ${result.items.length} 个候选；勾选重新联网可刷新。`:`找到 ${result.items.length} 个候选，请核对来源、名称和版本后选择。`):failed?'这次没有可自动填入的候选。可查看各来源的状态，或继续手动填写。':'来源请求成功，但没有匹配候选。可换来源、尝试原名或使用外部搜索核对。';
   renderLookupItems(result.items);
  }catch(err){if(lookupController.signal===signal)$('#lookup-status').textContent=signal.aborted?'本次搜索已停止。可以换来源重试或继续手动填写。':err.message;}
